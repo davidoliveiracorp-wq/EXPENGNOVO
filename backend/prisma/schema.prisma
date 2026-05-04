@@ -1,0 +1,114 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = env("DATABASE_PROVIDER")
+  url       = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
+  avatar    String?
+  createdAt DateTime @default(now())
+
+  ownedBoards   Board[]       @relation("BoardOwner")
+  boardMembers  BoardMember[]
+  cardMembers   CardMember[]
+  createdCards  Card[]        @relation("CardCreator")
+}
+
+model Board {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  background  String   @default("#6b46c1")
+  ownerId     String
+  createdAt   DateTime @default(now())
+
+  owner   User          @relation("BoardOwner", fields: [ownerId], references: [id])
+  members BoardMember[]
+  columns Column[]
+}
+
+model BoardMember {
+  id      String @id @default(uuid())
+  boardId String
+  userId  String
+  role    String @default("member")
+
+  board Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([boardId, userId])
+}
+
+model Column {
+  id      String @id @default(uuid())
+  title   String
+  color   String @default("#7c6d2e")
+  order   Int    @default(0)
+  boardId String
+
+  board Board  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  cards Card[]
+}
+
+model Card {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  order       Int      @default(0)
+  columnId    String
+  creatorId   String
+  dueDate     DateTime?
+  createdAt   DateTime @default(now())
+
+  column      Column       @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  creator     User         @relation("CardCreator", fields: [creatorId], references: [id])
+  members     CardMember[]
+  checklists  Checklist[]
+  attachments Attachment[]
+}
+
+model CardMember {
+  id     String @id @default(uuid())
+  cardId String
+  userId String
+
+  card Card @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([cardId, userId])
+}
+
+model Checklist {
+  id     String @id @default(uuid())
+  title  String
+  cardId String
+
+  card  Card            @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  items ChecklistItem[]
+}
+
+model ChecklistItem {
+  id          String  @id @default(uuid())
+  title       String
+  completed   Boolean @default(false)
+  checklistId String
+
+  checklist Checklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+}
+
+model Attachment {
+  id        String   @id @default(uuid())
+  filename  String
+  url       String
+  cardId    String
+  createdAt DateTime @default(now())
+
+  card Card @relation(fields: [cardId], references: [id], onDelete: Cascade)
+}

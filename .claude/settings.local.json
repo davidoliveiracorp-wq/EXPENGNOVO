@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "PowerShell(Get-ChildItem \"C:\\\\Program Files\\\\nodejs\" -ErrorAction SilentlyContinue | Select-Object -First 5; Get-ChildItem \"$env:APPDATA\\\\npm\\\\npm.cmd\" -ErrorAction SilentlyContinue; Get-ChildItem \"$env:LOCALAPPDATA\\\\Programs\\\\nodejs\" -ErrorAction SilentlyContinue | Select-Object -First 3; Get-ChildItem \"C:\\\\nvm\" -ErrorAction SilentlyContinue | Select-Object -First 5)",
+      "PowerShell(cmd /c \"where node 2>nul\")",
+      "PowerShell(cmd /c \"where npm 2>nul\")",
+      "PowerShell(cmd /c \"node --version 2>nul\")",
+      "PowerShell(cmd /c \"npm --version 2>nul\")"
+    ]
+  }
+}
