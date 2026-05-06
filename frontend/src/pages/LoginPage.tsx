@@ -18,8 +18,7 @@ export default function LoginPage() {
       await login(email, password)
       navigate('/')
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
-      setError(msg || 'Erro ao fazer login')
+      setError(err instanceof Error ? err.message : 'Erro ao fazer login')
     } finally {
       setLoading(false)
     }

@@ -3,7 +3,10 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
 import { useAuth } from '../contexts/AuthContext'
 import { Board, Card, Column, User } from '../types'
-import api from '../lib/api'
+import {
+  getBoardById, addCard, addColumn, deleteColumn, moveCard,
+  addBoardMember, findUserByEmail,
+} from '../lib/storage'
 import CardModal from '../components/CardModal'
 
 export default function BoardPage() {
@@ -11,7 +14,6 @@ export default function BoardPage() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const [board, setBoard] = useState<Board | null>(null)
-  const [loading, setLoading] = useState(true)
   const [selectedCard, setSelectedCard] = useState<Card | null>(null)
   const [addingCardCol, setAddingCardCol] = useState<string | null>(null)
   const [newCardTitle, setNewCardTitle] = useState('')
@@ -23,109 +25,78 @@ export default function BoardPage() {
 
   useEffect(() => {
     if (!id) return
-    api.get(`/boards/${id}`)
-      .then((r) => setBoard(r.data))
-      .catch(() => navigate('/'))
-      .finally(() => setLoading(false))
+    const b = getBoardById(id)
+    if (!b) navigate('/')
+    else setBoard(b)
   }, [id, navigate])
 
   function getInitials(name: string) {
     return name.split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase()
   }
 
-  async function addCard(columnId: string) {
-    if (!newCardTitle.trim()) return
-    const { data } = await api.post(`/columns/${columnId}/cards`, { title: newCardTitle })
-    setBoard((b) => b ? {
-      ...b,
-      columns: b.columns.map((col) =>
-        col.id === columnId ? { ...col, cards: [...col.cards, data] } : col
-      ),
-    } : b)
+  function handleAddCard(columnId: string) {
+    if (!newCardTitle.trim() || !user || !board) return
+    const updated = addCard(board.id, columnId, newCardTitle, user)
+    setBoard(updated)
     setNewCardTitle(''); setAddingCardCol(null)
   }
 
-  async function addColumn() {
+  function handleAddColumn() {
     if (!newColTitle.trim() || !board) return
-    const { data } = await api.post(`/boards/${board.id}/columns`, { title: newColTitle })
-    setBoard((b) => b ? { ...b, columns: [...b.columns, { ...data, cards: [] }] } : b)
+    const updated = addColumn(board.id, newColTitle)
+    setBoard(updated)
     setNewColTitle(''); setAddingCol(false)
   }
 
-  async function deleteColumn(colId: string) {
-    if (!confirm('Excluir esta coluna e todos os cards?')) return
-    await api.delete(`/columns/${colId}`)
-    setBoard((b) => b ? { ...b, columns: b.columns.filter((c) => c.id !== colId) } : b)
+  function handleDeleteColumn(colId: string) {
+    if (!confirm('Excluir esta coluna e todos os cards?') || !board) return
+    setBoard(deleteColumn(board.id, colId))
   }
 
-  async function invite() {
+  function handleInvite() {
     if (!inviteEmail.trim() || !board) return
-    try {
-      await api.post(`/boards/${board.id}/members`, { email: inviteEmail })
-      setInviteMsg('Membro adicionado com sucesso!')
-      setInviteEmail('')
-      const { data } = await api.get(`/boards/${board.id}`)
-      setBoard(data)
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
-      setInviteMsg(msg || 'Erro ao convidar')
-    }
+    const found = findUserByEmail(inviteEmail)
+    if (!found) { setInviteMsg('Usuário não encontrado'); return }
+    const updated = addBoardMember(board.id, found)
+    setBoard(updated)
+    setInviteMsg('Membro adicionado!'); setInviteEmail('')
   }
 
-  async function onDragEnd(result: DropResult) {
+  function onDragEnd(result: DropResult) {
     const { destination, source, draggableId } = result
     if (!destination || !board) return
     if (destination.droppableId === source.droppableId && destination.index === source.index) return
 
     const srcCol = board.columns.find((c) => c.id === source.droppableId)!
-    const dstCol = board.columns.find((c) => c.id === destination.droppableId)!
-    const card = srcCol.cards.find((c) => c.id === draggableId)!
+    const movedCard = srcCol.cards.find((c) => c.id === draggableId)!
 
+    // Optimistic UI update
     const newSrcCards = srcCol.cards.filter((c) => c.id !== draggableId)
+    const dstCol = board.columns.find((c) => c.id === destination.droppableId)!
     const newDstCards = destination.droppableId === source.droppableId
       ? [...newSrcCards] : [...dstCol.cards]
-    newDstCards.splice(destination.index, 0, { ...card, columnId: destination.droppableId })
+    newDstCards.splice(destination.index, 0, { ...movedCard, columnId: destination.droppableId })
 
-    setBoard((b) => {
-      if (!b) return b
-      return {
-        ...b,
-        columns: b.columns.map((col) => {
-          if (col.id === source.droppableId && col.id === destination.droppableId)
-            return { ...col, cards: newDstCards }
-          if (col.id === source.droppableId) return { ...col, cards: newSrcCards }
-          if (col.id === destination.droppableId) return { ...col, cards: newDstCards }
-          return col
-        }),
-      }
-    })
-
-    await api.patch(`/cards/${draggableId}/move`, {
-      columnId: destination.droppableId,
-      order: destination.index,
-    })
-  }
-
-  function handleCardUpdate(updated: Card) {
-    setSelectedCard(updated)
     setBoard((b) => b ? {
       ...b,
-      columns: b.columns.map((col) => ({
-        ...col,
-        cards: col.cards.map((c) => c.id === updated.id ? updated : c),
-      })),
+      columns: b.columns.map((col) => {
+        if (col.id === source.droppableId && col.id === destination.droppableId)
+          return { ...col, cards: newDstCards }
+        if (col.id === source.droppableId) return { ...col, cards: newSrcCards }
+        if (col.id === destination.droppableId) return { ...col, cards: newDstCards }
+        return col
+      }),
     } : b)
+
+    moveCard(board.id, draggableId, destination.droppableId, destination.index)
   }
 
-  function handleCardDelete(cardId: string) {
-    setSelectedCard(null)
-    setBoard((b) => b ? {
-      ...b,
-      columns: b.columns.map((col) => ({
-        ...col,
-        cards: col.cards.filter((c) => c.id !== cardId),
-      })),
-    } : b)
+  function handleBoardUpdate(updated: Board) {
+    setBoard(updated)
+    if (selectedCard) {
+      const found = updated.columns.flatMap((c) => c.cards).find((c) => c.id === selectedCard.id)
+      setSelectedCard(found || null)
+    }
   }
 
   function getChecklistSummary(card: Card) {
@@ -136,19 +107,14 @@ export default function BoardPage() {
 
   const boardMembers: User[] = board?.members.map((m) => m.user) || []
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-900 via-purple-700 to-fuchsia-600">
-        <div className="text-white text-lg">Carregando...</div>
-      </div>
-    )
-  }
-
-  if (!board) return null
+  if (!board) return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-900 via-purple-700 to-fuchsia-600">
+      <div className="text-white text-lg">Carregando...</div>
+    </div>
+  )
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: `linear-gradient(135deg, #3b0764 0%, ${board.background} 50%, #86198f 100%)` }}>
-      {/* Header */}
       <header className="bg-black/20 backdrop-blur-sm border-b border-white/10 flex-shrink-0">
         <div className="px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -163,11 +129,8 @@ export default function BoardPage() {
           <div className="flex items-center gap-3">
             <div className="flex -space-x-1">
               {board.members.slice(0, 5).map((m) => (
-                <div
-                  key={m.id}
-                  title={m.user.name}
-                  className="w-8 h-8 rounded-full bg-white/30 border-2 border-white/50 flex items-center justify-center text-xs font-semibold text-white"
-                >
+                <div key={m.id} title={m.user.name}
+                  className="w-8 h-8 rounded-full bg-white/30 border-2 border-white/50 flex items-center justify-center text-xs font-semibold text-white">
                   {getInitials(m.user.name)}
                 </div>
               ))}
@@ -178,7 +141,7 @@ export default function BoardPage() {
               )}
             </div>
             <button
-              onClick={() => setShowInvite(!showInvite)}
+              onClick={() => { setShowInvite(!showInvite); setInviteMsg('') }}
               className="flex items-center gap-1 bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg text-sm transition-colors"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -200,32 +163,29 @@ export default function BoardPage() {
             <input
               value={inviteEmail}
               onChange={(e) => setInviteEmail(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && invite()}
-              placeholder="Email do usuário..."
-              className="px-3 py-1.5 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 text-sm focus:outline-none focus:ring-1 focus:ring-white/40 w-64"
+              onKeyDown={(e) => e.key === 'Enter' && handleInvite()}
+              placeholder="Email do usuário cadastrado..."
+              className="px-3 py-1.5 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 text-sm focus:outline-none focus:ring-1 focus:ring-white/40 w-72"
             />
-            <button onClick={invite} className="px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg text-sm">Adicionar</button>
-            {inviteMsg && <span className="text-white/70 text-sm">{inviteMsg}</span>}
+            <button onClick={handleInvite} className="px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg text-sm">Adicionar</button>
+            {inviteMsg && <span className={`text-sm ${inviteMsg.includes('não') ? 'text-red-300' : 'text-green-300'}`}>{inviteMsg}</span>}
           </div>
         )}
       </header>
 
-      {/* Board */}
       <div className="flex-1 overflow-x-auto p-4">
         <DragDropContext onDragEnd={onDragEnd}>
           <div className="flex gap-4 h-full items-start">
             {board.columns.map((col: Column) => (
               <div key={col.id} className="flex-shrink-0 w-72">
                 <div className="rounded-xl overflow-hidden shadow-lg" style={{ background: col.color }}>
-                  {/* Column header */}
                   <div className="px-3 py-2.5 flex items-center justify-between">
                     <h3 className="text-white font-semibold text-sm">{col.title}</h3>
                     <div className="flex items-center gap-1">
                       <span className="text-white/60 text-xs">{col.cards.length}</span>
                       <button
-                        onClick={() => deleteColumn(col.id)}
+                        onClick={() => handleDeleteColumn(col.id)}
                         className="text-white/50 hover:text-white ml-1 transition-colors"
-                        title="Excluir coluna"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -234,7 +194,6 @@ export default function BoardPage() {
                     </div>
                   </div>
 
-                  {/* Cards */}
                   <Droppable droppableId={col.id}>
                     {(provided, snapshot) => (
                       <div
@@ -268,19 +227,12 @@ export default function BoardPage() {
                                           {checkSummary.done}/{checkSummary.total}
                                         </span>
                                       )}
-                                      {card.attachments.length > 0 && (
-                                        <span className="flex items-center gap-1 text-xs text-gray-400">
-                                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                                          </svg>
-                                          {card.attachments.length}
-                                        </span>
-                                      )}
                                     </div>
                                     {card.members.length > 0 && (
                                       <div className="flex -space-x-1">
                                         {card.members.slice(0, 3).map((m) => (
-                                          <div key={m.id} title={m.user.name} className="w-5 h-5 rounded-full bg-purple-600 border border-white flex items-center justify-center text-white text-xs font-medium">
+                                          <div key={m.id} title={m.user.name}
+                                            className="w-5 h-5 rounded-full bg-purple-600 border border-white flex items-center justify-center text-white text-xs font-medium">
                                             {getInitials(m.user.name)}
                                           </div>
                                         ))}
@@ -297,7 +249,6 @@ export default function BoardPage() {
                     )}
                   </Droppable>
 
-                  {/* Add card */}
                   <div className="px-2 pb-2">
                     {addingCardCol === col.id ? (
                       <div className="bg-white rounded-lg p-2">
@@ -305,14 +256,14 @@ export default function BoardPage() {
                           autoFocus
                           value={newCardTitle}
                           onChange={(e) => setNewCardTitle(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); addCard(col.id) } }}
+                          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAddCard(col.id) } }}
                           placeholder="Título do card..."
                           rows={2}
                           className="w-full text-sm text-gray-800 resize-none focus:outline-none"
                         />
                         <div className="flex gap-2 mt-2">
-                          <button onClick={() => addCard(col.id)} className="px-3 py-1 bg-white/20 text-white text-xs rounded font-medium bg-blue-600 hover:bg-blue-700 transition-colors">Adicionar</button>
-                          <button onClick={() => { setAddingCardCol(null); setNewCardTitle('') }} className="text-white/60 hover:text-white text-lg leading-none">✕</button>
+                          <button onClick={() => handleAddCard(col.id)} className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded font-medium transition-colors">Adicionar</button>
+                          <button onClick={() => { setAddingCardCol(null); setNewCardTitle('') }} className="text-gray-400 hover:text-gray-600 text-lg leading-none">✕</button>
                         </div>
                       </div>
                     ) : (
@@ -331,7 +282,6 @@ export default function BoardPage() {
               </div>
             ))}
 
-            {/* Add column */}
             <div className="flex-shrink-0 w-72">
               {addingCol ? (
                 <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 border border-white/20">
@@ -339,12 +289,12 @@ export default function BoardPage() {
                     autoFocus
                     value={newColTitle}
                     onChange={(e) => setNewColTitle(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && addColumn()}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddColumn()}
                     placeholder="Título da coluna..."
                     className="w-full px-2 py-1.5 bg-white/10 border border-white/30 rounded-lg text-white placeholder-white/40 text-sm focus:outline-none focus:ring-1 focus:ring-white/40 mb-2"
                   />
                   <div className="flex gap-2">
-                    <button onClick={addColumn} className="px-3 py-1.5 bg-white text-gray-800 rounded-lg text-sm font-medium hover:bg-white/90 transition-colors">Adicionar</button>
+                    <button onClick={handleAddColumn} className="px-3 py-1.5 bg-white text-gray-800 rounded-lg text-sm font-medium hover:bg-white/90 transition-colors">Adicionar</button>
                     <button onClick={() => { setAddingCol(false); setNewColTitle('') }} className="text-white/60 hover:text-white text-lg leading-none px-1">✕</button>
                   </div>
                 </div>
@@ -364,13 +314,13 @@ export default function BoardPage() {
         </DragDropContext>
       </div>
 
-      {selectedCard && (
+      {selectedCard && board && (
         <CardModal
           card={selectedCard}
+          boardId={board.id}
           boardMembers={boardMembers}
           onClose={() => setSelectedCard(null)}
-          onUpdate={handleCardUpdate}
-          onDelete={handleCardDelete}
+          onBoardUpdate={handleBoardUpdate}
         />
       )}
     </div>

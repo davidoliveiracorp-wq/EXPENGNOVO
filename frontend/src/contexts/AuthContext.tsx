@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
-import api from '../lib/api'
+import { authLogin, authLogout, authRegister, authGetCurrentUser } from '../lib/storage'
 import { User } from '../types'
 
 interface AuthContextType {
@@ -17,28 +17,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const token = localStorage.getItem('token')
-    if (!token) { setLoading(false); return }
-    api.get('/auth/me')
-      .then((r) => setUser(r.data.user))
-      .catch(() => localStorage.removeItem('token'))
-      .finally(() => setLoading(false))
+    setUser(authGetCurrentUser())
+    setLoading(false)
   }, [])
 
   async function login(email: string, password: string) {
-    const { data } = await api.post('/auth/login', { email, password })
-    localStorage.setItem('token', data.token)
-    setUser(data.user)
+    const u = await authLogin(email, password)
+    setUser(u)
   }
 
   async function register(name: string, email: string, password: string) {
-    const { data } = await api.post('/auth/register', { name, email, password })
-    localStorage.setItem('token', data.token)
-    setUser(data.user)
+    const u = await authRegister(name, email, password)
+    setUser(u)
   }
 
   function logout() {
-    localStorage.removeItem('token')
+    authLogout()
     setUser(null)
   }
 

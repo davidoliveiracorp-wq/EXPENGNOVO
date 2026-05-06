@@ -22,8 +22,7 @@ export default function RegisterPage() {
       await register(name, email, password)
       navigate('/')
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
-      setError(msg || 'Erro ao criar conta')
+      setError(err instanceof Error ? err.message : 'Erro ao criar conta')
     } finally {
       setLoading(false)
     }

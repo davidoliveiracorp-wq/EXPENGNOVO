@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import api from '../lib/api'
+import { getBoards, createBoard, deleteBoard } from '../lib/storage'
 import { Board } from '../types'
 
 const BG_OPTIONS = [
@@ -12,29 +12,29 @@ export default function BoardsPage() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const [boards, setBoards] = useState<Board[]>([])
-  const [loading, setLoading] = useState(true)
   const [showCreate, setShowCreate] = useState(false)
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [background, setBackground] = useState(BG_OPTIONS[0])
-  const [creating, setCreating] = useState(false)
 
   useEffect(() => {
-    api.get('/boards').then((r) => setBoards(r.data)).finally(() => setLoading(false))
-  }, [])
+    if (user) setBoards(getBoards(user.id))
+  }, [user])
 
-  async function createBoard() {
-    if (!title.trim()) return
-    setCreating(true)
-    try {
-      const { data } = await api.post('/boards', { title, description, background })
-      setBoards((b) => [data, ...b])
-      setShowCreate(false)
-      setTitle(''); setDescription(''); setBackground(BG_OPTIONS[0])
-      navigate(`/boards/${data.id}`)
-    } finally {
-      setCreating(false)
-    }
+  function handleCreate() {
+    if (!title.trim() || !user) return
+    const board = createBoard(title, description || undefined, background, user)
+    setBoards((b) => [board, ...b])
+    setShowCreate(false)
+    setTitle(''); setDescription(''); setBackground(BG_OPTIONS[0])
+    navigate(`/boards/${board.id}`)
+  }
+
+  function handleDelete(e: React.MouseEvent, boardId: string) {
+    e.stopPropagation()
+    if (!confirm('Excluir este quadro?')) return
+    deleteBoard(boardId)
+    setBoards((b) => b.filter((x) => x.id !== boardId))
   }
 
   function getInitials(name: string) {
@@ -59,9 +59,7 @@ export default function BoardsPage() {
               </div>
               <span className="text-sm hidden sm:block">{user?.name}</span>
             </div>
-            <button onClick={logout} className="text-white/60 hover:text-white text-sm transition-colors">
-              Sair
-            </button>
+            <button onClick={logout} className="text-white/60 hover:text-white text-sm transition-colors">Sair</button>
           </div>
         </div>
       </header>
@@ -80,47 +78,56 @@ export default function BoardsPage() {
           </button>
         </div>
 
-        {loading ? (
-          <div className="text-white/60 text-center py-16">Carregando...</div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {boards.map((board) => (
-              <button
-                key={board.id}
-                onClick={() => navigate(`/boards/${board.id}`)}
-                className="group relative h-32 rounded-xl overflow-hidden text-left hover:scale-[1.02] transition-transform shadow-lg"
-                style={{ background: board.background }}
-              >
-                <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors" />
-                <div className="relative p-4 h-full flex flex-col justify-between">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {boards.map((board) => (
+            <button
+              key={board.id}
+              onClick={() => navigate(`/boards/${board.id}`)}
+              className="group relative h-32 rounded-xl overflow-hidden text-left hover:scale-[1.02] transition-transform shadow-lg"
+              style={{ background: board.background }}
+            >
+              <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors" />
+              <div className="relative p-4 h-full flex flex-col justify-between">
+                <div className="flex items-start justify-between">
                   <div>
                     <h3 className="text-white font-semibold text-base leading-tight">{board.title}</h3>
                     {board.description && (
                       <p className="text-white/70 text-xs mt-1 line-clamp-2">{board.description}</p>
                     )}
                   </div>
-                  <div className="flex items-center gap-1">
-                    {board.members.slice(0, 4).map((m) => (
-                      <div key={m.id} className="w-6 h-6 rounded-full bg-white/30 flex items-center justify-center text-xs text-white font-medium border border-white/30">
-                        {getInitials(m.user.name)}
-                      </div>
-                    ))}
-                    {board.members.length > 4 && (
-                      <span className="text-white/60 text-xs">+{board.members.length - 4}</span>
-                    )}
-                  </div>
+                  {board.ownerId === user?.id && (
+                    <button
+                      onClick={(e) => handleDelete(e, board.id)}
+                      className="opacity-0 group-hover:opacity-100 text-white/60 hover:text-white transition-all ml-2 flex-shrink-0"
+                      title="Excluir quadro"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
                 </div>
-              </button>
-            ))}
-
-            {boards.length === 0 && (
-              <div className="col-span-full text-center py-16 text-white/50">
-                <p className="text-lg mb-2">Nenhum quadro ainda</p>
-                <p className="text-sm">Crie seu primeiro quadro para começar</p>
+                <div className="flex items-center gap-1">
+                  {board.members.slice(0, 4).map((m) => (
+                    <div key={m.id} className="w-6 h-6 rounded-full bg-white/30 flex items-center justify-center text-xs text-white font-medium border border-white/30">
+                      {getInitials(m.user.name)}
+                    </div>
+                  ))}
+                  {board.members.length > 4 && (
+                    <span className="text-white/60 text-xs">+{board.members.length - 4}</span>
+                  )}
+                </div>
               </div>
-            )}
-          </div>
-        )}
+            </button>
+          ))}
+
+          {boards.length === 0 && (
+            <div className="col-span-full text-center py-16 text-white/50">
+              <p className="text-lg mb-2">Nenhum quadro ainda</p>
+              <p className="text-sm">Crie seu primeiro quadro para começar</p>
+            </div>
+          )}
+        </div>
       </main>
 
       {showCreate && (
@@ -134,6 +141,7 @@ export default function BoardsPage() {
                   type="text"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
                   placeholder="Nome do quadro"
                   autoFocus
@@ -171,11 +179,11 @@ export default function BoardsPage() {
                 Cancelar
               </button>
               <button
-                onClick={createBoard}
-                disabled={!title.trim() || creating}
+                onClick={handleCreate}
+                disabled={!title.trim()}
                 className="flex-1 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
               >
-                {creating ? 'Criando...' : 'Criar'}
+                Criar
               </button>
             </div>
           </div>

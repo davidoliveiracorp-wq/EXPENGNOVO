@@ -3,26 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev:backend": "cd backend && npm run dev",
-    "dev:frontend": "cd frontend && npm run dev",
-    "build": "cd frontend && npm install && npm run build"
-  },
-  "dependencies": {
-    "@prisma/client": "^5.22.0",
-    "bcryptjs": "^2.4.3",
-    "cors": "^2.8.5",
-    "express": "^4.21.2",
-    "jsonwebtoken": "^9.0.2"
-  },
-  "devDependencies": {
-    "@types/bcryptjs": "^2.4.6",
-    "@types/cors": "^2.8.17",
-    "@types/express": "^5.0.0",
-    "@types/jsonwebtoken": "^9.0.7",
-    "@types/node": "^22.10.2",
-    "@vercel/node": "^3.2.26",
-    "prisma": "^5.22.0",
-    "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "dev": "cd frontend && npm run dev",
+    "build": "cd frontend && npm install && npm run build",
+    "preview": "cd frontend && npm run preview"
   }
 }
