@@ -114,7 +114,11 @@ export default function BoardPage() {
       `Olá!\n\nVocê foi convidado(a) para colaborar no quadro "${board.title}" do Expansão.\n\n` +
       `Clique no link abaixo para criar sua conta e acessar o quadro:\n${boardLink}\n\nAbraços! 🙏`
     )
-    window.open(`mailto:${email}?subject=${subject}&body=${body}`, '_blank')
+    // Abre o Gmail diretamente para composição
+    window.open(
+      `https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(email)}&su=${subject}&body=${body}`,
+      '_blank'
+    )
     setInviteSentTo(email)
     setInviteEmail('')
     setInviteStatus('idle')

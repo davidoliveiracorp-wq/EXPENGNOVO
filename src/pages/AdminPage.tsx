@@ -77,7 +77,10 @@ export default function AdminPage() {
       `Clique no link abaixo para criar sua conta:\n${link}\n\n` +
       `Qualquer dúvida, entre em contato.\n\nAbraços! 🙏`
     )
-    window.open(`mailto:${invite.email}?subject=${subject}&body=${body}`, '_blank')
+    window.open(
+      `https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(invite.email)}&su=${subject}&body=${body}`,
+      '_blank'
+    )
     setInvSent(invite.email)
     setInvName('')
     setInvEmail('')
@@ -363,7 +366,10 @@ export default function AdminPage() {
                           const body = encodeURIComponent(
                             `Olá, ${inv.name}!\n\nAcesse o link para criar sua conta:\n${link}\n\nAbraços! 🙏`
                           )
-                          window.open(`mailto:${inv.email}?subject=${subject}&body=${body}`, '_blank')
+                          window.open(
+                            `https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(inv.email)}&su=${subject}&body=${body}`,
+                            '_blank'
+                          )
                         }}
                         title="Reenviar e-mail"
                         className={`p-1.5 rounded-lg transition-colors ${muted} hover:text-green-400`}
