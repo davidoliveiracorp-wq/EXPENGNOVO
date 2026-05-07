@@ -17,6 +17,57 @@ function extractYouTubeId(url: string): string | null {
   return m ? m[1] : null
 }
 
+// ── Inline YouTube link saver inside the WA modal (for songs without a link) ─
+interface WaYouTubeInlineProps {
+  song: Song
+  isDark: boolean
+  muted: string
+  inputCls: string
+  onSave: (url: string) => void
+}
+function WaYouTubeInline({ song, isDark, muted, inputCls, onSave }: WaYouTubeInlineProps) {
+  const [url, setUrl] = useState('')
+  const [saved, setSaved] = useState(false)
+
+  function searchYT() {
+    const q = encodeURIComponent(`${song.title} ${song.artist}`.trim())
+    window.open(`https://www.youtube.com/results?search_query=${q}`, '_blank')
+  }
+
+  function save() {
+    if (!url.trim()) return
+    onSave(url.trim())
+    setSaved(true)
+  }
+
+  if (saved) return null
+
+  return (
+    <div className={`px-4 pb-3 pt-1 flex items-center gap-2 ${isDark ? 'bg-green-900/20' : 'bg-green-50'}`}>
+      <svg className="w-3.5 h-3.5 text-red-400 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+        <path d="M23.498 6.186a3.016 3.016 0 00-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 00.502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 002.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 002.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+      </svg>
+      <input
+        value={url}
+        onChange={(e) => setUrl(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && save()}
+        placeholder="Cole o link do YouTube aqui..."
+        className={`flex-1 px-2 py-1 text-xs border rounded-lg focus:outline-none focus:ring-1 focus:ring-red-400 ${isDark ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-500' : 'border-gray-300 bg-white text-gray-900'}`}
+      />
+      <button
+        onClick={searchYT}
+        title="Buscar no YouTube"
+        className="text-xs px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors whitespace-nowrap flex-shrink-0"
+      >Buscar</button>
+      <button
+        onClick={save}
+        disabled={!url.trim()}
+        className="text-xs px-2 py-1 bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white rounded-lg transition-colors whitespace-nowrap flex-shrink-0"
+      >Salvar</button>
+    </div>
+  )
+}
+
 // ── Inline YouTube link editor (used inside the YouTube tab) ─────────────────
 interface YouTubeFieldProps {
   song: Song
@@ -100,6 +151,7 @@ export default function LouvoresPage() {
   const [waPhone, setWaPhone] = useState(() => localStorage.getItem('kb_wa_contact') || '')
   const [waCopied, setWaCopied] = useState(false)
   const [waCustomMsg, setWaCustomMsg] = useState('')
+  const [waIncludeLinks, setWaIncludeLinks] = useState(true)
 
   const searchRef = useRef<HTMLInputElement>(null)
 
@@ -194,7 +246,8 @@ export default function LouvoresPage() {
       ``,
       ...selected.map((s, i) => {
         const key = s.key ? ` *(Tom: ${s.key})*` : ''
-        return `${i + 1}. 🎵 *${s.title}*${key}\n   _${s.artist}_`
+        const ytLine = waIncludeLinks && s.youtubeUrl ? `\n   ▶️ ${s.youtubeUrl}` : ''
+        return `${i + 1}. 🎵 *${s.title}*${key}\n   _${s.artist}_${ytLine}`
       }),
     ]
     if (waCustomMsg.trim()) {
@@ -660,30 +713,71 @@ export default function LouvoresPage() {
                     <p className={`text-sm text-center py-4 ${muted}`}>Nenhuma música cadastrada</p>
                   )}
                   {songs.map((song) => (
-                    <label key={song.id}
-                      className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors ${
-                        waSelected.has(song.id)
-                          ? isDark ? 'bg-green-900/30' : 'bg-green-50'
-                          : isDark ? 'hover:bg-gray-700' : 'hover:bg-gray-50'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={waSelected.has(song.id)}
-                        onChange={() => toggleWaSelection(song.id)}
-                        className="accent-green-500 w-4 h-4"
-                      />
-                      <span className={`flex-1 text-sm font-medium ${heading}`}>{song.title}</span>
-                      <span className={`text-xs ${muted}`}>{song.artist}</span>
-                      {song.key && (
-                        <span className="px-1.5 py-0.5 bg-orange-500/20 text-orange-400 text-xs rounded font-mono font-bold">
-                          {song.key}
-                        </span>
+                    <div key={song.id}>
+                      <label
+                        className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors ${
+                          waSelected.has(song.id)
+                            ? isDark ? 'bg-green-900/30' : 'bg-green-50'
+                            : isDark ? 'hover:bg-gray-700' : 'hover:bg-gray-50'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={waSelected.has(song.id)}
+                          onChange={() => toggleWaSelection(song.id)}
+                          className="accent-green-500 w-4 h-4 flex-shrink-0"
+                        />
+                        <span className={`flex-1 text-sm font-medium ${heading}`}>{song.title}</span>
+                        <span className={`text-xs ${muted}`}>{song.artist}</span>
+                        {song.key && (
+                          <span className="px-1.5 py-0.5 bg-orange-500/20 text-orange-400 text-xs rounded font-mono font-bold">
+                            {song.key}
+                          </span>
+                        )}
+                        {/* YouTube status indicator */}
+                        {song.youtubeUrl ? (
+                          <svg className="w-4 h-4 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24" title="Link do YouTube salvo">
+                            <path d="M23.498 6.186a3.016 3.016 0 00-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 00.502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 002.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 002.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                          </svg>
+                        ) : waSelected.has(song.id) ? (
+                          <span className={`text-xs px-1.5 py-0.5 rounded ${isDark ? 'bg-gray-600 text-gray-400' : 'bg-gray-200 text-gray-400'}`} title="Sem link do YouTube">
+                            sem link
+                          </span>
+                        ) : null}
+                      </label>
+                      {/* Inline YouTube link saver — shows only when selected & no link yet */}
+                      {waSelected.has(song.id) && !song.youtubeUrl && (
+                        <WaYouTubeInline
+                          song={song}
+                          isDark={isDark}
+                          muted={muted}
+                          inputCls={inputCls}
+                          onSave={(url) => {
+                            const updated = updateSong(song.id, { youtubeUrl: url || undefined })
+                            setSongs((prev) => prev.map((s) => s.id === song.id ? updated : s))
+                          }}
+                        />
                       )}
-                    </label>
+                    </div>
                   ))}
                 </div>
               </div>
+
+              {/* Include YouTube links toggle */}
+              {songs.some((s) => waSelected.has(s.id) && s.youtubeUrl) && (
+                <label className={`flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer ${isDark ? 'bg-gray-700/50' : 'bg-gray-100'}`}>
+                  <input
+                    type="checkbox"
+                    checked={waIncludeLinks}
+                    onChange={(e) => setWaIncludeLinks(e.target.checked)}
+                    className="accent-red-500 w-4 h-4"
+                  />
+                  <svg className="w-4 h-4 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M23.498 6.186a3.016 3.016 0 00-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 00.502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 002.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 002.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                  </svg>
+                  <span className={`text-sm ${heading}`}>Incluir links do YouTube na mensagem</span>
+                </label>
+              )}
 
               {/* Custom message */}
               <div>
