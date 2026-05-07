@@ -70,7 +70,7 @@ export function authGetCurrentUser(): User | null {
 }
 
 export function findUserByEmail(email: string): User | null {
-  const stored = get<StoredUser>('kb_users').find((u) => u.email === email)
+  const stored = get<StoredUser>('kb_users').find((u) => u.email.toLowerCase() === email.toLowerCase().trim())
   if (!stored) return null
   const { passwordHash: _, ...user } = stored
   return user
@@ -128,7 +128,8 @@ export function deleteBoard(id: string) {
 }
 
 export function addBoardMember(boardId: string, user: User): Board {
-  const board = getBoardById(boardId)!
+  const board = getBoardById(boardId)
+  if (!board) throw new Error(`Board ${boardId} não encontrado`)
   if (board.members.some((m) => m.userId === user.id)) return board
   const updated = { ...board, members: [...board.members, { id: uid(), boardId, userId: user.id, role: 'member', user }] }
   upsertBoard(updated)

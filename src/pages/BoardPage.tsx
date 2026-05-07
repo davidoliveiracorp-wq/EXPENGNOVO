@@ -24,8 +24,9 @@ export default function BoardPage() {
   const [showInvite, setShowInvite] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteFound, setInviteFound] = useState<User | null>(null)
-  const [inviteStatus, setInviteStatus] = useState<'idle' | 'found' | 'notfound' | 'added' | 'already'>('idle')
+  const [inviteStatus, setInviteStatus] = useState<'idle' | 'found' | 'notfound' | 'added' | 'already' | 'error'>('idle')
   const [inviteSentTo, setInviteSentTo] = useState<string | null>(null)
+  const [inviteError, setInviteError] = useState<string | null>(null)
   const inviteRef = useRef<HTMLDivElement>(null)
   const inviteInputRef = useRef<HTMLInputElement>(null)
 
@@ -76,25 +77,33 @@ export default function BoardPage() {
     setInviteStatus('idle')
     setInviteFound(null)
     setInviteSentTo(null)
+    setInviteError(null)
     if (!val.trim()) return
     const found = findUserByEmail(val.trim())
     if (found) {
       const alreadyMember = board?.members.some((m) => m.userId === found.id)
       setInviteFound(found)
       setInviteStatus(alreadyMember ? 'already' : 'found')
-    } else if (val.includes('@')) {
+    } else if (val.trim().includes('@')) {
       setInviteStatus('notfound')
     }
   }
 
-  function handleAddMember() {
-    if (!inviteFound || !board || inviteStatus !== 'found') return
-    const updated = addBoardMember(board.id, inviteFound)
-    setBoard(updated)
-    setInviteStatus('added')
-    setInviteEmail('')
-    setInviteFound(null)
-    setTimeout(() => setInviteStatus('idle'), 2500)
+  function handleAddMember(e?: React.MouseEvent) {
+    e?.stopPropagation()
+    if (!inviteFound || !board) return
+    setInviteError(null)
+    try {
+      const updated = addBoardMember(board.id, inviteFound)
+      setBoard(updated)
+      setInviteStatus('added')
+      setInviteEmail('')
+      setInviteFound(null)
+      setTimeout(() => setInviteStatus('idle'), 2500)
+    } catch (err) {
+      setInviteError(err instanceof Error ? err.message : 'Erro ao adicionar membro')
+      setInviteStatus('error')
+    }
   }
 
   function handleSendEmailInvite() {
@@ -253,7 +262,7 @@ export default function BoardPage() {
                           </div>
                         </div>
                         <button
-                          onClick={handleAddMember}
+                          onClick={(e) => handleAddMember(e)}
                           className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-medium transition-colors flex-shrink-0"
                         >
                           Adicionar
@@ -292,6 +301,15 @@ export default function BoardPage() {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                         </svg>
                         Membro adicionado com sucesso!
+                      </p>
+                    )}
+
+                    {inviteStatus === 'error' && inviteError && (
+                      <p className="text-xs text-red-400 px-1 flex items-center gap-1">
+                        <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        {inviteError}
                       </p>
                     )}
 
