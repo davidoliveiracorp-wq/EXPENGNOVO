@@ -136,6 +136,30 @@ export function addBoardMember(boardId: string, user: User): Board {
   return updated
 }
 
+// Importa um quadro de outro dispositivo/usuário (via link de convite com boardData)
+export function importBoard(board: Board, user: User): Board {
+  const boards = loadBoards()
+  const existing = boards.findIndex((b) => b.id === board.id)
+  if (existing >= 0) {
+    // Quadro já existe: adiciona como membro se ainda não for
+    const b = boards[existing]
+    if (b.members.some((m) => m.userId === user.id)) return b
+    const updated = { ...b, members: [...b.members, { id: uid(), boardId: b.id, userId: user.id, role: 'member' as const, user }] }
+    boards[existing] = updated
+    saveBoards(boards)
+    return updated
+  }
+  // Importa o quadro completo, garantindo que o usuário é membro
+  const isMember = board.members.some((m) => m.userId === user.id)
+  const boardToSave: Board = isMember ? board : {
+    ...board,
+    members: [...board.members, { id: uid(), boardId: board.id, userId: user.id, role: 'member' as const, user }],
+  }
+  boards.push(boardToSave)
+  saveBoards(boards)
+  return boardToSave
+}
+
 export function removeBoardMember(boardId: string, userId: string): Board {
   const board = getBoardById(boardId)!
   const updated = { ...board, members: board.members.filter((m) => m.userId !== userId) }

@@ -2,7 +2,8 @@ import { useState, FormEvent } from 'react'
 import { useNavigate, Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
-import { addBoardMember, getBoardById, authGetCurrentUser } from '../lib/storage'
+import { addBoardMember, getBoardById, authGetCurrentUser, importBoard } from '../lib/storage'
+import { Board } from '../types'
 import Logo from '../components/Logo'
 
 export default function RegisterPage() {
@@ -26,12 +27,26 @@ export default function RegisterPage() {
     setLoading(true)
     try {
       await register(name, email, password)
-      // Se veio de um convite de quadro, adiciona o usuário ao board
       const boardId = searchParams.get('board')
+      const boardDataParam = searchParams.get('boardData')
       if (boardId) {
-        const board = getBoardById(boardId)
         const newUser = authGetCurrentUser()
-        if (board && newUser) addBoardMember(boardId, newUser)
+        if (newUser) {
+          if (boardDataParam) {
+            // Importa o quadro completo do admin para o localStorage do novo usuário
+            try {
+              const boardObj: Board = JSON.parse(atob(boardDataParam))
+              importBoard(boardObj, newUser)
+            } catch {
+              // Fallback: tenta adicionar pelo ID local (caso o quadro já exista)
+              const board = getBoardById(boardId)
+              if (board) addBoardMember(boardId, newUser)
+            }
+          } else {
+            const board = getBoardById(boardId)
+            if (board) addBoardMember(boardId, newUser)
+          }
+        }
         navigate(`/boards/${boardId}`)
       } else {
         navigate('/')
