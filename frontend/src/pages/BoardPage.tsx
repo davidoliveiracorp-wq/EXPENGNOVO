@@ -10,6 +10,8 @@ import {
 } from '../lib/storage'
 import CardModal from '../components/CardModal'
 
+type BoardViewMode = 'board' | 'list'
+
 export default function BoardPage() {
   const { id } = useParams<{ id: string }>()
   const { user } = useAuth()
@@ -18,6 +20,14 @@ export default function BoardPage() {
   const [searchParams] = useSearchParams()
   const [board, setBoard] = useState<Board | null>(null)
   const [selectedCard, setSelectedCard] = useState<Card | null>(null)
+  const [boardViewMode, setBoardViewMode] = useState<BoardViewMode>(() => {
+    return (localStorage.getItem(`boardView_${id}`) as BoardViewMode) || 'board'
+  })
+
+  function setView(mode: BoardViewMode) {
+    setBoardViewMode(mode)
+    if (id) localStorage.setItem(`boardView_${id}`, mode)
+  }
   const [addingCardCol, setAddingCardCol] = useState<string | null>(null)
   const [newCardTitle, setNewCardTitle] = useState('')
   const [addingCol, setAddingCol] = useState(false)
@@ -228,6 +238,29 @@ export default function BoardPage() {
           </div>
 
           <div className="flex items-center gap-3">
+            {/* View toggle */}
+            <div className="flex rounded-xl overflow-hidden border border-white/20">
+              <button
+                onClick={() => setView('board')}
+                title="Visualização em quadro"
+                className={`p-2 transition-colors ${boardViewMode === 'board' ? 'bg-white/30 text-white' : 'bg-white/10 text-white/50 hover:text-white hover:bg-white/20'}`}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+                </svg>
+              </button>
+              <button
+                onClick={() => setView('list')}
+                title="Visualização em lista"
+                className={`p-2 transition-colors ${boardViewMode === 'list' ? 'bg-white/30 text-white' : 'bg-white/10 text-white/50 hover:text-white hover:bg-white/20'}`}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                </svg>
+              </button>
+            </div>
+
             <div className="flex -space-x-1">
               {board.members.slice(0, 5).map((m) => (
                 <div key={m.id} title={m.user.name}
@@ -409,6 +442,164 @@ export default function BoardPage() {
         </div>
       </header>
 
+      {/* ── LIST VIEW ────────────────────────────────────────────── */}
+      {boardViewMode === 'list' && (
+        <div className="flex-1 overflow-y-auto p-4">
+          <div className="max-w-4xl mx-auto space-y-4">
+            {[...board.columns].sort((a, b) => a.order - b.order).map((col: Column) => (
+              <div key={col.id} className="rounded-2xl overflow-hidden shadow-lg">
+                {/* Column header */}
+                <div className="px-4 py-3 flex items-center justify-between" style={{ background: col.color }}>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-white font-semibold text-sm">{col.title}</h3>
+                    <span className="bg-white/20 text-white text-xs font-bold px-2 py-0.5 rounded-full">{col.cards.length}</span>
+                  </div>
+                  <button
+                    onClick={() => setAddingCardCol(addingCardCol === col.id ? null : col.id)}
+                    className="flex items-center gap-1 text-white/70 hover:text-white text-xs transition-colors"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    Adicionar
+                  </button>
+                </div>
+
+                {/* Add card inline */}
+                {addingCardCol === col.id && (
+                  <div className="px-4 py-3 bg-black/30 border-b border-white/10 flex items-center gap-2">
+                    <input
+                      autoFocus
+                      value={newCardTitle}
+                      onChange={(e) => setNewCardTitle(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') handleAddCard(col.id); if (e.key === 'Escape') { setAddingCardCol(null); setNewCardTitle('') } }}
+                      placeholder="Título do cartão..."
+                      className="flex-1 px-3 py-1.5 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/30 text-sm focus:outline-none focus:ring-1 focus:ring-white/40"
+                    />
+                    <button onClick={() => handleAddCard(col.id)} className="px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg text-xs font-medium transition-colors">Adicionar</button>
+                    <button onClick={() => { setAddingCardCol(null); setNewCardTitle('') }} className="text-white/50 hover:text-white text-lg leading-none">✕</button>
+                  </div>
+                )}
+
+                {/* Cards list */}
+                <div className="bg-black/20 backdrop-blur-sm divide-y divide-white/5">
+                  {col.cards.length === 0 ? (
+                    <p className="px-4 py-3 text-white/30 text-sm italic">Nenhum cartão nesta coluna</p>
+                  ) : (
+                    col.cards.map((card: Card) => {
+                      const checkSummary = getChecklistSummary(card)
+                      const isOverdue = card.dueDate && new Date(card.dueDate + 'T00:00:00') < new Date(new Date().toDateString())
+                      const isDueSoon = card.dueDate && !isOverdue && (new Date(card.dueDate + 'T00:00:00').getTime() - Date.now()) / 86400000 <= 2
+                      return (
+                        <div
+                          key={card.id}
+                          onClick={() => setSelectedCard(card)}
+                          className="flex items-center gap-3 px-4 py-3 hover:bg-white/8 cursor-pointer transition-colors group"
+                        >
+                          {/* Color dot */}
+                          <div className="w-2.5 h-2.5 rounded-full flex-shrink-0 opacity-80" style={{ background: col.color }} />
+
+                          {/* Cover thumbnail */}
+                          {card.cover && (
+                            <img src={card.cover} alt="" className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
+                          )}
+
+                          {/* Title + meta */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {card.labels.map((lbl) => (
+                                <span key={lbl.id} className="px-1.5 py-0.5 rounded-full text-[10px] font-bold text-white flex-shrink-0" style={{ background: lbl.color }}>{lbl.text}</span>
+                              ))}
+                              <span className="text-white text-sm font-medium truncate">{card.title}</span>
+                            </div>
+                            {card.description && (
+                              <p className="text-white/40 text-xs mt-0.5 truncate">{card.description}</p>
+                            )}
+                          </div>
+
+                          {/* Badges */}
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            {card.dueDate && (
+                              <span className={`flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded font-medium ${isOverdue ? 'bg-red-500/20 text-red-400' : isDueSoon ? 'bg-yellow-500/20 text-yellow-400' : 'bg-white/10 text-white/50'}`}>
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                                {new Date(card.dueDate + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+                              </span>
+                            )}
+                            {checkSummary && (
+                              <span className={`flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded ${checkSummary.done === checkSummary.total ? 'bg-green-500/20 text-green-400' : 'bg-white/10 text-white/50'}`}>
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                                </svg>
+                                {checkSummary.done}/{checkSummary.total}
+                              </span>
+                            )}
+                            {card.attachments.length > 0 && (
+                              <span className="flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded bg-white/10 text-white/50">
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                                </svg>
+                                {card.attachments.length}
+                              </span>
+                            )}
+                            {card.members.length > 0 && (
+                              <div className="flex -space-x-1">
+                                {card.members.slice(0, 3).map((m) => (
+                                  <div key={m.id} title={m.user.name}
+                                    className="w-5 h-5 rounded-full bg-purple-600 border border-white/20 flex items-center justify-center text-white text-[9px] font-bold">
+                                    {getInitials(m.user.name)}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            <svg className="w-4 h-4 text-white/20 group-hover:text-white/50 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                          </div>
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+              </div>
+            ))}
+
+            {/* Add column button in list mode */}
+            <div>
+              {addingCol ? (
+                <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 border border-white/20">
+                  <input
+                    autoFocus
+                    value={newColTitle}
+                    onChange={(e) => setNewColTitle(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddColumn()}
+                    placeholder="Título da coluna..."
+                    className="w-full px-2 py-1.5 bg-white/10 border border-white/30 rounded-lg text-white placeholder-white/40 text-sm focus:outline-none focus:ring-1 focus:ring-white/40 mb-2"
+                  />
+                  <div className="flex gap-2">
+                    <button onClick={handleAddColumn} className="px-3 py-1.5 bg-white text-gray-800 rounded-lg text-sm font-medium hover:bg-white/90 transition-colors">Adicionar</button>
+                    <button onClick={() => { setAddingCol(false); setNewColTitle('') }} className="text-white/60 hover:text-white text-lg leading-none px-1">✕</button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setAddingCol(true)}
+                  className="flex items-center gap-2 bg-white/10 hover:bg-white/20 backdrop-blur-sm text-white px-4 py-2.5 rounded-xl border border-white/20 transition-colors text-sm font-medium"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Adicionar outra lista
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── BOARD VIEW ────────────────────────────────────────────── */}
+      {boardViewMode === 'board' && (
       <div className="flex-1 overflow-x-auto overflow-y-auto p-4">
         <DragDropContext onDragEnd={onDragEnd}>
           <div className="flex gap-4 h-full items-start">
@@ -592,6 +783,7 @@ export default function BoardPage() {
           </div>
         </DragDropContext>
       </div>
+      )}
 
       {selectedCard && board && (
         <CardModal
