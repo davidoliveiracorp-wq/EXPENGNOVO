@@ -211,6 +211,16 @@ export default function LouvoresPage() {
     window.open(`https://www.youtube.com/results?search_query=${q}`, '_blank')
   }
 
+  function searchCifraClub(title: string, artist: string) {
+    const q = encodeURIComponent(`${title} ${artist}`.trim())
+    window.open(`https://www.cifraclub.com.br/?q=${q}`, '_blank')
+  }
+
+  function searchLetras(title: string, artist: string) {
+    const q = encodeURIComponent(`${title} ${artist}`.trim())
+    window.open(`https://www.letras.mus.br/busca.php?q=${q}`, '_blank')
+  }
+
   function saveForm() {
     if (!form.title.trim() || !form.artist.trim() || !user) return
     const data = {
@@ -509,29 +519,65 @@ export default function LouvoresPage() {
               {/* Tab content */}
               <div className="flex-1 overflow-y-auto p-6">
                 {activeTab === 'letra' && (
-                  selectedSong.lyrics ? (
-                    <pre className={`text-sm leading-relaxed whitespace-pre-wrap font-sans ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>
-                      {selectedSong.lyrics}
-                    </pre>
-                  ) : (
-                    <div className={`text-center py-12 ${muted}`}>
-                      <p className="text-sm mb-2">Nenhuma letra cadastrada</p>
-                      <button onClick={() => openEdit(selectedSong)} className="text-xs text-orange-400 hover:text-orange-300">Adicionar letra</button>
+                  <div className="space-y-4">
+                    {/* Search bar */}
+                    <div className={`flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl border ${isDark ? 'bg-gray-700/50 border-gray-600' : 'bg-blue-50 border-blue-200'}`}>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-base flex-shrink-0">📝</span>
+                        <span className={`text-xs ${muted} truncate`}>Buscar letra online e copiar para o campo abaixo</span>
+                      </div>
+                      <button
+                        onClick={() => searchLetras(selectedSong.title, selectedSong.artist)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors flex-shrink-0"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                        Buscar no Letras.mus.br
+                      </button>
                     </div>
-                  )
+                    {selectedSong.lyrics ? (
+                      <pre className={`text-sm leading-relaxed whitespace-pre-wrap font-sans ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>
+                        {selectedSong.lyrics}
+                      </pre>
+                    ) : (
+                      <div className={`text-center py-10 ${muted}`}>
+                        <p className="text-sm mb-2">Nenhuma letra cadastrada</p>
+                        <button onClick={() => openEdit(selectedSong)} className="text-xs text-orange-400 hover:text-orange-300">Adicionar letra manualmente</button>
+                      </div>
+                    )}
+                  </div>
                 )}
 
                 {activeTab === 'cifra' && (
-                  selectedSong.cifra ? (
-                    <pre className={`text-sm leading-relaxed whitespace-pre-wrap font-mono ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>
-                      {selectedSong.cifra}
-                    </pre>
-                  ) : (
-                    <div className={`text-center py-12 ${muted}`}>
-                      <p className="text-sm mb-2">Nenhuma cifra cadastrada</p>
-                      <button onClick={() => openEdit(selectedSong)} className="text-xs text-orange-400 hover:text-orange-300">Adicionar cifra</button>
+                  <div className="space-y-4">
+                    {/* Search bar */}
+                    <div className={`flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl border ${isDark ? 'bg-gray-700/50 border-gray-600' : 'bg-green-50 border-green-200'}`}>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-base flex-shrink-0">🎸</span>
+                        <span className={`text-xs ${muted} truncate`}>Buscar cifra online e copiar para o campo abaixo</span>
+                      </div>
+                      <button
+                        onClick={() => searchCifraClub(selectedSong.title, selectedSong.artist)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-medium transition-colors flex-shrink-0"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                        Buscar no CifraClub
+                      </button>
                     </div>
-                  )
+                    {selectedSong.cifra ? (
+                      <pre className={`text-sm leading-relaxed whitespace-pre-wrap font-mono ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>
+                        {selectedSong.cifra}
+                      </pre>
+                    ) : (
+                      <div className={`text-center py-10 ${muted}`}>
+                        <p className="text-sm mb-2">Nenhuma cifra cadastrada</p>
+                        <button onClick={() => openEdit(selectedSong)} className="text-xs text-orange-400 hover:text-orange-300">Adicionar cifra manualmente</button>
+                      </div>
+                    )}
+                  </div>
                 )}
 
                 {activeTab === 'youtube' && (
@@ -682,7 +728,21 @@ export default function LouvoresPage() {
 
               {/* Letra */}
               <div>
-                <label className={`block text-xs font-semibold uppercase tracking-wide mb-1.5 ${muted}`}>Letra</label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className={`text-xs font-semibold uppercase tracking-wide ${muted}`}>Letra</label>
+                  <button
+                    type="button"
+                    onClick={() => searchLetras(form.title, form.artist)}
+                    disabled={!form.title.trim()}
+                    title="Buscar letra no Letras.mus.br"
+                    className="flex items-center gap-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded-lg text-xs font-medium transition-colors"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    Buscar no Letras.mus.br
+                  </button>
+                </div>
                 <textarea
                   value={form.lyrics}
                   onChange={(e) => setForm((f) => ({ ...f, lyrics: e.target.value }))}
@@ -694,7 +754,21 @@ export default function LouvoresPage() {
 
               {/* Cifra */}
               <div>
-                <label className={`block text-xs font-semibold uppercase tracking-wide mb-1.5 ${muted}`}>Cifra</label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className={`text-xs font-semibold uppercase tracking-wide ${muted}`}>Cifra</label>
+                  <button
+                    type="button"
+                    onClick={() => searchCifraClub(form.title, form.artist)}
+                    disabled={!form.title.trim()}
+                    title="Buscar cifra no CifraClub"
+                    className="flex items-center gap-1 px-2.5 py-1 bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white rounded-lg text-xs font-medium transition-colors"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    Buscar no CifraClub
+                  </button>
+                </div>
                 <textarea
                   value={form.cifra}
                   onChange={(e) => setForm((f) => ({ ...f, cifra: e.target.value }))}
