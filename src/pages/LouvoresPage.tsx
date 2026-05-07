@@ -9,7 +9,71 @@ const CATEGORIES = ['Louvor', 'Adoração', 'Contemplação', 'Evangelismo', 'Co
 
 const EMPTY_FORM = {
   title: '', artist: '', key: '', category: '',
-  lyrics: '', cifra: '', bpm: '',
+  lyrics: '', cifra: '', youtubeUrl: '', bpm: '',
+}
+
+function extractYouTubeId(url: string): string | null {
+  const m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/)
+  return m ? m[1] : null
+}
+
+// ── Inline YouTube link editor (used inside the YouTube tab) ─────────────────
+interface YouTubeFieldProps {
+  song: Song
+  isDark: boolean
+  muted: string
+  inputCls: string
+  onSave: (url: string) => void
+}
+function YouTubeField({ song, isDark, muted, inputCls, onSave }: YouTubeFieldProps) {
+  const [url, setUrl] = useState(song.youtubeUrl || '')
+  const [saved, setSaved] = useState(false)
+
+  function save() {
+    onSave(url.trim())
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
+  }
+
+  function searchYT() {
+    const q = encodeURIComponent(`${song.title} ${song.artist}`.trim())
+    window.open(`https://www.youtube.com/results?search_query=${q}`, '_blank')
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-2">
+        <input
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && save()}
+          placeholder="https://www.youtube.com/watch?v=..."
+          className={`${inputCls} flex-1`}
+        />
+        <button
+          onClick={searchYT}
+          title="Buscar no YouTube"
+          className="flex items-center gap-1.5 px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors flex-shrink-0"
+        >
+          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M23.498 6.186a3.016 3.016 0 00-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 00.502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 002.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 002.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+          </svg>
+          Buscar
+        </button>
+        <button
+          onClick={save}
+          className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors flex-shrink-0 ${
+            saved
+              ? 'bg-green-600 text-white'
+              : isDark ? 'bg-gray-600 hover:bg-gray-500 text-white' : 'bg-gray-300 hover:bg-gray-400 text-gray-800'
+          }`}
+        >
+          {saved ? '✓ Salvo' : 'Salvar'}
+        </button>
+      </div>
+      <p className={`text-xs ${muted}`}>Clique em "Buscar" para abrir o YouTube, copie o link do vídeo e cole acima</p>
+    </div>
+  )
 }
 
 export default function LouvoresPage() {
@@ -20,7 +84,7 @@ export default function LouvoresPage() {
   // Songs
   const [songs, setSongs] = useState<Song[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'letra' | 'cifra'>('letra')
+  const [activeTab, setActiveTab] = useState<'letra' | 'cifra' | 'youtube'>('letra')
   const [search, setSearch] = useState('')
   const [filterCat, setFilterCat] = useState<string>('Todas')
 
@@ -67,9 +131,15 @@ export default function LouvoresPage() {
       category: song.category || '',
       lyrics: song.lyrics || '',
       cifra: song.cifra || '',
+      youtubeUrl: song.youtubeUrl || '',
       bpm: song.bpm ? String(song.bpm) : '',
     })
     setShowForm(true)
+  }
+
+  function searchYouTube() {
+    const q = encodeURIComponent(`${form.title} ${form.artist}`.trim())
+    window.open(`https://www.youtube.com/results?search_query=${q}`, '_blank')
   }
 
   function saveForm() {
@@ -81,6 +151,7 @@ export default function LouvoresPage() {
       category: form.category || undefined,
       lyrics: form.lyrics || undefined,
       cifra: form.cifra || undefined,
+      youtubeUrl: form.youtubeUrl.trim() || undefined,
       bpm: form.bpm ? Number(form.bpm) : undefined,
       createdBy: user.id,
     }
@@ -251,9 +322,16 @@ export default function LouvoresPage() {
                         {song.key}
                       </span>
                     )}
-                    {song.category && (
-                      <span className={`text-xs ${muted}`}>{song.category}</span>
-                    )}
+                    <div className="flex items-center gap-1">
+                      {song.youtubeUrl && (
+                        <svg className="w-3.5 h-3.5 text-red-500" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M23.498 6.186a3.016 3.016 0 00-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 00.502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 002.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 002.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                        </svg>
+                      )}
+                      {song.category && (
+                        <span className={`text-xs ${muted}`}>{song.category}</span>
+                      )}
+                    </div>
                   </div>
                 </div>
               </button>
@@ -307,24 +385,36 @@ export default function LouvoresPage() {
 
               {/* Tabs */}
               <div className={`flex border-b flex-shrink-0 ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
-                {(['letra', 'cifra'] as const).map((tab) => (
+                {([
+                  { id: 'letra', label: 'Letra' },
+                  { id: 'cifra', label: 'Cifra' },
+                  { id: 'youtube', label: 'YouTube' },
+                ] as const).map((tab) => (
                   <button
-                    key={tab}
-                    onClick={() => setActiveTab(tab)}
-                    className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors capitalize ${
-                      activeTab === tab
-                        ? 'border-orange-400 text-orange-400'
-                        : `border-transparent ${muted} hover:${heading}`
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${
+                      activeTab === tab.id
+                        ? tab.id === 'youtube' ? 'border-red-500 text-red-500' : 'border-orange-400 text-orange-400'
+                        : `border-transparent ${muted} hover:text-current`
                     }`}
                   >
-                    {tab === 'letra' ? 'Letra' : 'Cifra'}
+                    {tab.id === 'youtube' && (
+                      <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M23.498 6.186a3.016 3.016 0 00-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 00.502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 002.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 002.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                      </svg>
+                    )}
+                    {tab.label}
+                    {tab.id === 'youtube' && selectedSong.youtubeUrl && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-500 ml-0.5" />
+                    )}
                   </button>
                 ))}
               </div>
 
               {/* Tab content */}
               <div className="flex-1 overflow-y-auto p-6">
-                {activeTab === 'letra' ? (
+                {activeTab === 'letra' && (
                   selectedSong.lyrics ? (
                     <pre className={`text-sm leading-relaxed whitespace-pre-wrap font-sans ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>
                       {selectedSong.lyrics}
@@ -335,7 +425,9 @@ export default function LouvoresPage() {
                       <button onClick={() => openEdit(selectedSong)} className="text-xs text-orange-400 hover:text-orange-300">Adicionar letra</button>
                     </div>
                   )
-                ) : (
+                )}
+
+                {activeTab === 'cifra' && (
                   selectedSong.cifra ? (
                     <pre className={`text-sm leading-relaxed whitespace-pre-wrap font-mono ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>
                       {selectedSong.cifra}
@@ -346,6 +438,52 @@ export default function LouvoresPage() {
                       <button onClick={() => openEdit(selectedSong)} className="text-xs text-orange-400 hover:text-orange-300">Adicionar cifra</button>
                     </div>
                   )
+                )}
+
+                {activeTab === 'youtube' && (
+                  <div className="space-y-4">
+                    {/* Embedded player */}
+                    {selectedSong.youtubeUrl && extractYouTubeId(selectedSong.youtubeUrl) ? (
+                      <div className="rounded-2xl overflow-hidden shadow-lg">
+                        <iframe
+                          src={`https://www.youtube.com/embed/${extractYouTubeId(selectedSong.youtubeUrl)}`}
+                          className="w-full aspect-video"
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                          allowFullScreen
+                          title={selectedSong.title}
+                        />
+                      </div>
+                    ) : selectedSong.youtubeUrl ? (
+                      <a
+                        href={selectedSong.youtubeUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 text-red-500 hover:text-red-400 text-sm font-medium"
+                      >
+                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M23.498 6.186a3.016 3.016 0 00-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 00.502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 002.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 002.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                        </svg>
+                        Abrir no YouTube
+                      </a>
+                    ) : null}
+
+                    {/* Quick search field */}
+                    <div className={`rounded-xl p-4 border ${isDark ? 'bg-gray-700/50 border-gray-600' : 'bg-gray-100 border-gray-200'}`}>
+                      <p className={`text-xs font-semibold uppercase tracking-wide mb-3 ${muted}`}>
+                        {selectedSong.youtubeUrl ? 'Alterar link do YouTube' : 'Adicionar link do YouTube'}
+                      </p>
+                      <YouTubeField
+                        song={selectedSong}
+                        isDark={isDark}
+                        muted={muted}
+                        inputCls={inputCls}
+                        onSave={(url) => {
+                          const updated = updateSong(selectedSong.id, { youtubeUrl: url || undefined })
+                          setSongs((prev) => prev.map((s) => s.id === selectedSong.id ? updated : s))
+                        }}
+                      />
+                    </div>
+                  </div>
                 )}
               </div>
             </>
@@ -420,6 +558,32 @@ export default function LouvoresPage() {
                   <input type="number" value={form.bpm} onChange={(e) => setForm((f) => ({ ...f, bpm: e.target.value }))}
                     placeholder="Ex: 120" className={inputCls} min={40} max={240} />
                 </div>
+              </div>
+
+              {/* YouTube */}
+              <div>
+                <label className={`block text-xs font-semibold uppercase tracking-wide mb-1.5 ${muted}`}>Link do YouTube</label>
+                <div className="flex gap-2">
+                  <input
+                    value={form.youtubeUrl}
+                    onChange={(e) => setForm((f) => ({ ...f, youtubeUrl: e.target.value }))}
+                    placeholder="https://www.youtube.com/watch?v=..."
+                    className={`${inputCls} flex-1`}
+                  />
+                  <button
+                    type="button"
+                    onClick={searchYouTube}
+                    disabled={!form.title.trim()}
+                    title="Buscar no YouTube"
+                    className="flex items-center gap-1.5 px-3 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white rounded-lg text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0"
+                  >
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M23.498 6.186a3.016 3.016 0 00-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 00.502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 002.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 002.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                    </svg>
+                    Buscar
+                  </button>
+                </div>
+                <p className={`text-xs mt-1 ${muted}`}>Clique em "Buscar" para abrir o YouTube com o nome da música, depois cole o link aqui</p>
               </div>
 
               {/* Letra */}

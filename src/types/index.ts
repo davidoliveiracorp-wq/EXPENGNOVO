@@ -97,6 +97,7 @@ export interface Song {
   category?: string   // louvor, adoração, contemplação, evangelismo
   lyrics?: string
   cifra?: string      // cifra em texto
+  youtubeUrl?: string // link do YouTube
   bpm?: number
   createdAt: string
   createdBy: string
