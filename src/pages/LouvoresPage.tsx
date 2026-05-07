@@ -162,6 +162,19 @@ export default function LouvoresPage() {
   // ── Load ──────────────────────────────────────────────────────────────────
   useEffect(() => { setSongs(getSongs()) }, [])
 
+  // Refresh waSongs whenever the window regains focus while the modal is open
+  // (e.g. user switched to YouTube tab to copy a link)
+  useEffect(() => {
+    if (!showWA) return
+    const refresh = () => {
+      const fresh = getSongs()
+      setSongs(fresh)
+      setWaSongs(fresh)
+    }
+    window.addEventListener('focus', refresh)
+    return () => window.removeEventListener('focus', refresh)
+  }, [showWA])
+
   const selectedSong = songs.find((s) => s.id === selectedId) || null
 
   const filtered = songs.filter((s) => {
@@ -248,9 +261,9 @@ export default function LouvoresPage() {
   }
 
   function buildWaMessage() {
-    // Use the waSongs snapshot (populated from localStorage at modal-open time)
-    // so YouTube URLs are always present regardless of React state staleness
-    const selected = waSongs.filter((s) => waSelected.has(s.id))
+    // Always read directly from localStorage — bypasses all React state
+    // so YouTube URLs are guaranteed to be present
+    const selected = getSongs().filter((s) => waSelected.has(s.id))
     const d = new Date(waDate + 'T12:00:00')
     const dateStr = d.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })
     const cap = dateStr.charAt(0).toUpperCase() + dateStr.slice(1)
@@ -788,14 +801,15 @@ export default function LouvoresPage() {
                         )}
                         {/* YouTube status indicator */}
                         {song.youtubeUrl ? (
-                          <svg className="w-4 h-4 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24" title="Link do YouTube salvo">
+                          <svg className="w-4 h-4 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24" title={song.youtubeUrl}>
                             <path d="M23.498 6.186a3.016 3.016 0 00-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 00.502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 002.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 002.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
                           </svg>
-                        ) : waSelected.has(song.id) ? (
-                          <span className={`text-xs px-1.5 py-0.5 rounded ${isDark ? 'bg-gray-600 text-gray-400' : 'bg-gray-200 text-gray-400'}`} title="Sem link do YouTube">
-                            sem link
-                          </span>
                         ) : null}
+                        {waSelected.has(song.id) && song.youtubeUrl && (
+                          <span className="text-xs text-red-400 truncate max-w-[120px]" title={song.youtubeUrl}>
+                            {song.youtubeUrl.replace('https://', '')}
+                          </span>
+                        )}
                       </label>
                       {/* Inline YouTube link saver — shows only when selected & no link yet */}
                       {waSelected.has(song.id) && !song.youtubeUrl && (
