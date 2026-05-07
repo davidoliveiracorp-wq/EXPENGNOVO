@@ -154,6 +154,8 @@ export default function LouvoresPage() {
   const [waIncludeYT, setWaIncludeYT] = useState(true)
   const [waIncludeCifra, setWaIncludeCifra] = useState(false)
   const [waIncludeLetra, setWaIncludeLetra] = useState(false)
+  // Snapshot of songs at modal-open time — always from localStorage
+  const [waSongs, setWaSongs] = useState<Song[]>([])
 
   const searchRef = useRef<HTMLInputElement>(null)
 
@@ -229,10 +231,11 @@ export default function LouvoresPage() {
 
   // ── WhatsApp helpers ──────────────────────────────────────────────────────
   function openShareModal() {
-    // Always reload from localStorage to ensure freshest data (including
-    // YouTube URLs saved via the tab editor after the initial load)
+    // Always reload from localStorage — captures any YouTube URLs saved
+    // via the tab editor or form after the initial page load
     const fresh = getSongs()
     setSongs(fresh)
+    setWaSongs(fresh)   // independent snapshot used inside the WA modal
     setShowWA(true)
   }
 
@@ -245,7 +248,9 @@ export default function LouvoresPage() {
   }
 
   function buildWaMessage() {
-    const selected = songs.filter((s) => waSelected.has(s.id))
+    // Use the waSongs snapshot (populated from localStorage at modal-open time)
+    // so YouTube URLs are always present regardless of React state staleness
+    const selected = waSongs.filter((s) => waSelected.has(s.id))
     const d = new Date(waDate + 'T12:00:00')
     const dateStr = d.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })
     const cap = dateStr.charAt(0).toUpperCase() + dateStr.slice(1)
@@ -756,10 +761,10 @@ export default function LouvoresPage() {
               <div>
                 <label className={`block text-xs font-semibold uppercase tracking-wide mb-2 ${muted}`}>Selecionar músicas</label>
                 <div className={`rounded-xl border overflow-hidden divide-y ${isDark ? 'border-gray-700 divide-gray-700' : 'border-gray-200 divide-gray-100'}`}>
-                  {songs.length === 0 && (
+                  {waSongs.length === 0 && (
                     <p className={`text-sm text-center py-4 ${muted}`}>Nenhuma música cadastrada</p>
                   )}
-                  {songs.map((song) => (
+                  {waSongs.map((song) => (
                     <div key={song.id}>
                       <label
                         className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors ${
@@ -802,6 +807,7 @@ export default function LouvoresPage() {
                           onSave={(url) => {
                             const updated = updateSong(song.id, { youtubeUrl: url || undefined })
                             setSongs((prev) => prev.map((s) => s.id === song.id ? updated : s))
+                            setWaSongs((prev) => prev.map((s) => s.id === song.id ? updated : s))
                           }}
                         />
                       )}
