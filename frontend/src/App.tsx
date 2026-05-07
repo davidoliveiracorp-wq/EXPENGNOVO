@@ -7,6 +7,7 @@ import BoardsPage from './pages/BoardsPage'
 import BoardPage from './pages/BoardPage'
 import LouvoresPage from './pages/LouvoresPage'
 import AdminPage from './pages/AdminPage'
+import RelatoriosPage from './pages/RelatoriosPage'
 import AppLayout from './components/AppLayout'
 import { ReactNode } from 'react'
 
@@ -40,6 +41,7 @@ function AppRoutes() {
         <Route index element={<BoardsPage />} />
         <Route path="boards/:id" element={<BoardPage />} />
         <Route path="louvores" element={<LouvoresPage />} />
+        <Route path="relatorios" element={<RelatoriosPage />} />
         <Route path="admin" element={<AdminPage />} />
       </Route>
 

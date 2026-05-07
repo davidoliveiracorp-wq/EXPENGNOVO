@@ -11,6 +11,12 @@ function getInitials(name: string) {
   return name.split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase()
 }
 
+function getTotalCards(board: Board) {
+  return board.columns.reduce((sum, col) => sum + col.cards.length, 0)
+}
+
+type ViewMode = 'grid' | 'list'
+
 export default function BoardsPage() {
   const { user } = useAuth()
   const { theme } = useTheme()
@@ -22,8 +28,16 @@ export default function BoardsPage() {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [background, setBackground] = useState(BG_OPTIONS[0])
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    return (localStorage.getItem('boardsViewMode') as ViewMode) || 'grid'
+  })
 
   useEffect(() => { if (user) setBoards(getBoards(user.id)) }, [user])
+
+  function setView(mode: ViewMode) {
+    setViewMode(mode)
+    localStorage.setItem('boardsViewMode', mode)
+  }
 
   function handleCreate() {
     if (!title.trim() || !user) return
@@ -45,6 +59,7 @@ export default function BoardsPage() {
   const muted = isDark ? 'text-gray-400' : 'text-gray-500'
   const modal = isDark ? 'bg-gray-800' : 'bg-white'
   const inputCls = `w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm ${isDark ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'border-gray-300 text-gray-900'}`
+  const cardBg = isDark ? 'bg-gray-800 border-gray-700 hover:bg-gray-750' : 'bg-white border-gray-200 hover:bg-gray-50'
 
   return (
     <div className={`min-h-full ${bg} p-6`}>
@@ -54,68 +69,173 @@ export default function BoardsPage() {
           <h2 className={`text-xl font-bold ${heading}`}>Meus Quadros</h2>
           <p className={`text-sm mt-0.5 ${muted}`}>{boards.length} quadro{boards.length !== 1 ? 's' : ''}</p>
         </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 bg-black hover:bg-gray-800 text-white px-4 py-2 rounded-xl transition-colors text-sm font-medium"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          Criar Quadro
-        </button>
+        <div className="flex items-center gap-2">
+          {/* View toggle */}
+          <div className={`flex rounded-xl overflow-hidden border ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
+            <button
+              onClick={() => setView('grid')}
+              title="Visualização em grade"
+              className={`p-2 transition-colors ${viewMode === 'grid'
+                ? 'bg-black text-white'
+                : isDark ? 'bg-gray-800 text-gray-400 hover:text-white' : 'bg-white text-gray-500 hover:text-gray-900'}`}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+              </svg>
+            </button>
+            <button
+              onClick={() => setView('list')}
+              title="Visualização em lista"
+              className={`p-2 transition-colors ${viewMode === 'list'
+                ? 'bg-black text-white'
+                : isDark ? 'bg-gray-800 text-gray-400 hover:text-white' : 'bg-white text-gray-500 hover:text-gray-900'}`}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+              </svg>
+            </button>
+          </div>
+
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-2 bg-black hover:bg-gray-800 text-white px-4 py-2 rounded-xl transition-colors text-sm font-medium"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Criar Quadro
+          </button>
+        </div>
       </div>
 
-      {/* Boards grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        {boards.map((board) => (
-          <button
-            key={board.id}
-            onClick={() => navigate(`/boards/${board.id}`)}
-            className="group relative h-32 rounded-2xl overflow-hidden text-left hover:scale-[1.02] transition-transform shadow-lg"
-            style={{ background: board.background }}
-          >
-            <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors" />
-            <div className="relative p-4 h-full flex flex-col justify-between">
-              <div className="flex items-start justify-between">
-                <div>
-                  <h3 className="text-white font-semibold text-base leading-tight">{board.title}</h3>
-                  {board.description && <p className="text-white/70 text-xs mt-1 line-clamp-2">{board.description}</p>}
+      {/* ── GRID VIEW ── */}
+      {viewMode === 'grid' && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {boards.map((board) => (
+            <button
+              key={board.id}
+              onClick={() => navigate(`/boards/${board.id}`)}
+              className="group relative h-32 rounded-2xl overflow-hidden text-left hover:scale-[1.02] transition-transform shadow-lg"
+              style={{ background: board.background }}
+            >
+              <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors" />
+              <div className="relative p-4 h-full flex flex-col justify-between">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h3 className="text-white font-semibold text-base leading-tight">{board.title}</h3>
+                    {board.description && <p className="text-white/70 text-xs mt-1 line-clamp-2">{board.description}</p>}
+                  </div>
+                  {board.ownerId === user?.id && (
+                    <button
+                      onClick={(e) => handleDelete(e, board.id)}
+                      className="opacity-0 group-hover:opacity-100 text-white/60 hover:text-white transition-all ml-2 flex-shrink-0"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
                 </div>
+                <div className="flex items-center gap-1">
+                  {board.members.slice(0, 4).map((m) => (
+                    <div key={m.id} className="w-6 h-6 rounded-full bg-white/30 flex items-center justify-center text-xs text-white font-medium border border-white/30">
+                      {getInitials(m.user.name)}
+                    </div>
+                  ))}
+                  {board.members.length > 4 && <span className="text-white/60 text-xs ml-1">+{board.members.length - 4}</span>}
+                </div>
+              </div>
+            </button>
+          ))}
+
+          {boards.length === 0 && (
+            <div className={`col-span-full text-center py-20 ${muted}`}>
+              <svg className="w-12 h-12 mx-auto mb-3 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                  d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+              </svg>
+              <p className="text-lg font-medium mb-1">Nenhum quadro ainda</p>
+              <p className="text-sm">Crie seu primeiro quadro para começar</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── LIST VIEW ── */}
+      {viewMode === 'list' && (
+        <div className="space-y-2">
+          {boards.map((board) => {
+            const totalCards = getTotalCards(board)
+            const createdDate = new Date(board.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })
+            return (
+              <button
+                key={board.id}
+                onClick={() => navigate(`/boards/${board.id}`)}
+                className={`group w-full flex items-center gap-4 p-4 rounded-2xl border transition-all text-left shadow-sm hover:shadow-md ${cardBg}`}
+              >
+                {/* Color strip */}
+                <div className="w-2 h-14 rounded-full flex-shrink-0" style={{ background: board.background }} />
+
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h3 className={`font-semibold text-sm truncate ${heading}`}>{board.title}</h3>
+                    {board.ownerId !== user?.id && (
+                      <span className={`text-xs px-1.5 py-0.5 rounded-full flex-shrink-0 ${isDark ? 'bg-gray-700 text-gray-400' : 'bg-gray-100 text-gray-500'}`}>membro</span>
+                    )}
+                  </div>
+                  {board.description && (
+                    <p className={`text-xs mt-0.5 truncate ${muted}`}>{board.description}</p>
+                  )}
+                  <div className="flex items-center gap-3 mt-1.5">
+                    {/* Members */}
+                    <div className="flex items-center gap-1">
+                      {board.members.slice(0, 5).map((m) => (
+                        <div key={m.id} className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white border border-white/20" style={{ background: board.background }}>
+                          {getInitials(m.user.name)}
+                        </div>
+                      ))}
+                      {board.members.length > 5 && <span className={`text-xs ${muted}`}>+{board.members.length - 5}</span>}
+                    </div>
+                    <span className={`text-xs ${muted}`}>•</span>
+                    <span className={`text-xs ${muted}`}>{board.columns.length} coluna{board.columns.length !== 1 ? 's' : ''}</span>
+                    <span className={`text-xs ${muted}`}>•</span>
+                    <span className={`text-xs ${muted}`}>{totalCards} tarefa{totalCards !== 1 ? 's' : ''}</span>
+                  </div>
+                </div>
+
+                {/* Date */}
+                <div className={`text-xs flex-shrink-0 ${muted} hidden sm:block`}>{createdDate}</div>
+
+                {/* Delete (owner only) */}
                 {board.ownerId === user?.id && (
                   <button
                     onClick={(e) => handleDelete(e, board.id)}
-                    className="opacity-0 group-hover:opacity-100 text-white/60 hover:text-white transition-all ml-2 flex-shrink-0"
+                    className={`opacity-0 group-hover:opacity-100 transition-all flex-shrink-0 p-1 rounded-lg ${isDark ? 'text-gray-500 hover:text-red-400 hover:bg-red-400/10' : 'text-gray-400 hover:text-red-500 hover:bg-red-50'}`}
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
                   </button>
                 )}
-              </div>
-              <div className="flex items-center gap-1">
-                {board.members.slice(0, 4).map((m) => (
-                  <div key={m.id} className="w-6 h-6 rounded-full bg-white/30 flex items-center justify-center text-xs text-white font-medium border border-white/30">
-                    {getInitials(m.user.name)}
-                  </div>
-                ))}
-                {board.members.length > 4 && <span className="text-white/60 text-xs ml-1">+{board.members.length - 4}</span>}
-              </div>
-            </div>
-          </button>
-        ))}
+              </button>
+            )
+          })}
 
-        {/* Empty state */}
-        {boards.length === 0 && (
-          <div className={`col-span-full text-center py-20 ${muted}`}>
-            <svg className="w-12 h-12 mx-auto mb-3 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
-            </svg>
-            <p className="text-lg font-medium mb-1">Nenhum quadro ainda</p>
-            <p className="text-sm">Crie seu primeiro quadro para começar</p>
-          </div>
-        )}
-      </div>
+          {boards.length === 0 && (
+            <div className={`text-center py-20 ${muted}`}>
+              <svg className="w-12 h-12 mx-auto mb-3 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                  d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+              </svg>
+              <p className="text-lg font-medium mb-1">Nenhum quadro ainda</p>
+              <p className="text-sm">Crie seu primeiro quadro para começar</p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Create board modal */}
       {showCreate && (
