@@ -135,6 +135,13 @@ export function addBoardMember(boardId: string, user: User): Board {
   return updated
 }
 
+export function removeBoardMember(boardId: string, userId: string): Board {
+  const board = getBoardById(boardId)!
+  const updated = { ...board, members: board.members.filter((m) => m.userId !== userId) }
+  upsertBoard(updated)
+  return updated
+}
+
 // ── Columns ───────────────────────────────────────────────────────────────────
 
 export function addColumn(boardId: string, title: string): Board {

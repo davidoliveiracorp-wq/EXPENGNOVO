@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
 import { useAuth } from '../contexts/AuthContext'
@@ -6,7 +6,7 @@ import { useTheme } from '../contexts/ThemeContext'
 import { Board, Card, Column, User } from '../types'
 import {
   getBoardById, addCard, addColumn, deleteColumn, moveCard,
-  addBoardMember, findUserByEmail,
+  addBoardMember, findUserByEmail, removeBoardMember,
 } from '../lib/storage'
 import CardModal from '../components/CardModal'
 
@@ -21,9 +21,13 @@ export default function BoardPage() {
   const [newCardTitle, setNewCardTitle] = useState('')
   const [addingCol, setAddingCol] = useState(false)
   const [newColTitle, setNewColTitle] = useState('')
-  const [inviteEmail, setInviteEmail] = useState('')
   const [showInvite, setShowInvite] = useState(false)
-  const [inviteMsg, setInviteMsg] = useState('')
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteFound, setInviteFound] = useState<User | null>(null)
+  const [inviteStatus, setInviteStatus] = useState<'idle' | 'found' | 'notfound' | 'added' | 'already'>('idle')
+  const [inviteSentTo, setInviteSentTo] = useState<string | null>(null)
+  const inviteRef = useRef<HTMLDivElement>(null)
+  const inviteInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!id) return
@@ -55,13 +59,64 @@ export default function BoardPage() {
     setBoard(deleteColumn(board.id, colId))
   }
 
-  function handleInvite() {
-    if (!inviteEmail.trim() || !board) return
-    const found = findUserByEmail(inviteEmail)
-    if (!found) { setInviteMsg('Usuário não encontrado'); return }
-    const updated = addBoardMember(board.id, found)
+  // fecha o painel ao clicar fora
+  useEffect(() => {
+    if (!showInvite) return
+    function handler(e: MouseEvent) {
+      if (inviteRef.current && !inviteRef.current.contains(e.target as Node)) {
+        setShowInvite(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showInvite])
+
+  function handleEmailChange(val: string) {
+    setInviteEmail(val)
+    setInviteStatus('idle')
+    setInviteFound(null)
+    setInviteSentTo(null)
+    if (!val.trim()) return
+    const found = findUserByEmail(val.trim())
+    if (found) {
+      const alreadyMember = board?.members.some((m) => m.userId === found.id)
+      setInviteFound(found)
+      setInviteStatus(alreadyMember ? 'already' : 'found')
+    } else if (val.includes('@')) {
+      setInviteStatus('notfound')
+    }
+  }
+
+  function handleAddMember() {
+    if (!inviteFound || !board || inviteStatus !== 'found') return
+    const updated = addBoardMember(board.id, inviteFound)
     setBoard(updated)
-    setInviteMsg('Membro adicionado!'); setInviteEmail('')
+    setInviteStatus('added')
+    setInviteEmail('')
+    setInviteFound(null)
+    setTimeout(() => setInviteStatus('idle'), 2500)
+  }
+
+  function handleSendEmailInvite() {
+    if (!board) return
+    const email = inviteEmail.trim()
+    const boardLink = `${window.location.origin}/register?email=${encodeURIComponent(email)}&board=${board.id}`
+    const subject = encodeURIComponent(`Convite para o quadro "${board.title}" — Expansão`)
+    const body = encodeURIComponent(
+      `Olá!\n\nVocê foi convidado(a) para colaborar no quadro "${board.title}" do Expansão.\n\n` +
+      `Clique no link abaixo para criar sua conta e acessar o quadro:\n${boardLink}\n\nAbraços! 🙏`
+    )
+    window.open(`mailto:${email}?subject=${subject}&body=${body}`, '_blank')
+    setInviteSentTo(email)
+    setInviteEmail('')
+    setInviteStatus('idle')
+  }
+
+  function handleRemoveMember(userId: string) {
+    if (!board || userId === user?.id) return
+    if (!confirm('Remover este membro do quadro?')) return
+    const updated = removeBoardMember(board.id, userId)
+    setBoard(updated)
   }
 
   function onDragEnd(result: DropResult) {
@@ -144,31 +199,151 @@ export default function BoardPage() {
                 </div>
               )}
             </div>
-            <button
-              onClick={() => { setShowInvite(!showInvite); setInviteMsg('') }}
-              className="flex items-center gap-1 bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg text-sm transition-colors"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-              </svg>
-              Convidar
-            </button>
+            {/* Convidar button + popover */}
+            <div className="relative" ref={inviteRef}>
+              <button
+                onClick={() => {
+                  setShowInvite((v) => !v)
+                  setInviteEmail(''); setInviteStatus('idle'); setInviteFound(null); setInviteSentTo(null)
+                  setTimeout(() => inviteInputRef.current?.focus(), 80)
+                }}
+                className="flex items-center gap-1.5 bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg text-sm transition-colors font-medium"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                </svg>
+                Convidar
+              </button>
+
+              {showInvite && (
+                <div className="absolute right-0 top-10 w-80 bg-gray-900 border border-white/15 rounded-2xl shadow-2xl z-50 overflow-hidden">
+                  {/* Header */}
+                  <div className="px-4 py-3 border-b border-white/10">
+                    <p className="text-white font-semibold text-sm">Convidar para este quadro</p>
+                    <p className="text-white/50 text-xs mt-0.5">Digite o e-mail de quem você quer convidar</p>
+                  </div>
+
+                  {/* Input */}
+                  <div className="p-3 space-y-2">
+                    <div className="relative">
+                      <svg className="w-4 h-4 absolute left-3 top-2.5 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                      </svg>
+                      <input
+                        ref={inviteInputRef}
+                        type="email"
+                        value={inviteEmail}
+                        onChange={(e) => handleEmailChange(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && (inviteStatus === 'found' ? handleAddMember() : inviteStatus === 'notfound' ? handleSendEmailInvite() : undefined)}
+                        placeholder="nome@email.com"
+                        className="w-full pl-9 pr-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/30 text-sm focus:outline-none focus:ring-1 focus:ring-white/40"
+                      />
+                    </div>
+
+                    {/* Feedback states */}
+                    {inviteStatus === 'found' && inviteFound && (
+                      <div className="flex items-center justify-between bg-white/8 rounded-xl px-3 py-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-full bg-purple-600 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
+                            {inviteFound.name.split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase()}
+                          </div>
+                          <div>
+                            <p className="text-white text-xs font-medium">{inviteFound.name}</p>
+                            <p className="text-white/50 text-xs">{inviteFound.email}</p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={handleAddMember}
+                          className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-medium transition-colors flex-shrink-0"
+                        >
+                          Adicionar
+                        </button>
+                      </div>
+                    )}
+
+                    {inviteStatus === 'already' && inviteFound && (
+                      <p className="text-xs text-yellow-400 px-1 flex items-center gap-1">
+                        <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        {inviteFound.name} já é membro deste quadro
+                      </p>
+                    )}
+
+                    {inviteStatus === 'notfound' && (
+                      <div className="bg-white/8 rounded-xl px-3 py-2.5 space-y-2">
+                        <p className="text-white/70 text-xs">Este e-mail ainda não tem cadastro. Envie um convite:</p>
+                        <button
+                          onClick={handleSendEmailInvite}
+                          className="w-full flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white rounded-lg py-1.5 text-xs font-medium transition-colors"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                          </svg>
+                          Enviar convite por e-mail
+                        </button>
+                        <p className="text-white/40 text-xs text-center">O link de cadastro já vai incluir este quadro</p>
+                      </div>
+                    )}
+
+                    {inviteStatus === 'added' && (
+                      <p className="text-xs text-green-400 px-1 flex items-center gap-1">
+                        <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        Membro adicionado com sucesso!
+                      </p>
+                    )}
+
+                    {inviteSentTo && (
+                      <p className="text-xs text-green-400 px-1 flex items-center gap-1">
+                        <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        Convite enviado para {inviteSentTo}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Members list */}
+                  <div className="border-t border-white/10">
+                    <p className="px-4 pt-3 pb-1 text-white/40 text-xs font-semibold uppercase tracking-wide">
+                      Membros ({board.members.length})
+                    </p>
+                    <div className="max-h-44 overflow-y-auto pb-2">
+                      {board.members.map((m) => (
+                        <div key={m.id} className="flex items-center gap-2.5 px-4 py-1.5 hover:bg-white/5 group">
+                          <div className="w-7 h-7 rounded-full bg-white/20 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
+                            {m.user.name.split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase()}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-white text-xs font-medium truncate">{m.user.name}</p>
+                            <p className="text-white/40 text-xs truncate">{m.user.email}</p>
+                          </div>
+                          {m.role === 'owner' ? (
+                            <span className="text-xs text-white/30 flex-shrink-0">dono</span>
+                          ) : m.userId !== user?.id ? (
+                            <button
+                              onClick={() => handleRemoveMember(m.userId)}
+                              title="Remover membro"
+                              className="opacity-0 group-hover:opacity-100 text-white/30 hover:text-red-400 transition-all flex-shrink-0"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          ) : (
+                            <span className="text-xs text-white/30 flex-shrink-0">você</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
-
-        {showInvite && (
-          <div className="px-4 pb-3 flex items-center gap-2">
-            <input
-              value={inviteEmail}
-              onChange={(e) => setInviteEmail(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleInvite()}
-              placeholder="Email do usuário cadastrado..."
-              className="px-3 py-1.5 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 text-sm focus:outline-none focus:ring-1 focus:ring-white/40 w-72"
-            />
-            <button onClick={handleInvite} className="px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg text-sm">Adicionar</button>
-            {inviteMsg && <span className={`text-sm ${inviteMsg.includes('não') ? 'text-red-300' : 'text-green-300'}`}>{inviteMsg}</span>}
-          </div>
-        )}
       </header>
 
       <div className="flex-1 overflow-x-auto overflow-y-auto p-4">

@@ -2,6 +2,7 @@ import { useState, FormEvent } from 'react'
 import { useNavigate, Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
+import { addBoardMember, getBoardById, authGetCurrentUser } from '../lib/storage'
 import Logo from '../components/Logo'
 
 export default function RegisterPage() {
@@ -25,7 +26,16 @@ export default function RegisterPage() {
     setLoading(true)
     try {
       await register(name, email, password)
-      navigate('/')
+      // Se veio de um convite de quadro, adiciona o usuário ao board
+      const boardId = searchParams.get('board')
+      if (boardId) {
+        const board = getBoardById(boardId)
+        const newUser = authGetCurrentUser()
+        if (board && newUser) addBoardMember(boardId, newUser)
+        navigate(`/boards/${boardId}`)
+      } else {
+        navigate('/')
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao criar conta')
     } finally {
