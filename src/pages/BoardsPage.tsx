@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, MouseEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
@@ -33,7 +33,7 @@ export default function BoardsPage() {
     navigate(`/boards/${board.id}`)
   }
 
-  function handleDelete(e: React.MouseEvent, boardId: string) {
+  function handleDelete(e: MouseEvent, boardId: string) {
     e.stopPropagation()
     if (!confirm('Excluir este quadro?')) return
     deleteBoard(boardId)

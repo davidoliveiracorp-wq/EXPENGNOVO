@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, ChangeEvent } from 'react'
 import { Board, Card, Checklist, Column, Label, User } from '../types'
 import {
   updateCard, deleteCard, addCardMember, removeCardMember,
@@ -104,7 +104,7 @@ export default function CardModal({ card, boardId, boardMembers, columns, onClos
   }
 
   // ── Cover ──────────────────────────────────────────────────────────────────
-  function handleCoverChange(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleCoverChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
     const reader = new FileReader()
@@ -120,7 +120,7 @@ export default function CardModal({ card, boardId, boardMembers, columns, onClos
   }
 
   // ── Attachments ────────────────────────────────────────────────────────────
-  function handleAttachChange(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleAttachChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
     const isImage = file.type.startsWith('image/')
