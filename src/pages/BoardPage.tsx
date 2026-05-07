@@ -383,6 +383,7 @@ export default function BoardPage() {
           card={selectedCard}
           boardId={board.id}
           boardMembers={boardMembers}
+          columns={board.columns}
           onClose={() => setSelectedCard(null)}
           onBoardUpdate={handleBoardUpdate}
         />

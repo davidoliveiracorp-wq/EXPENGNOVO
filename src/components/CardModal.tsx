@@ -1,10 +1,11 @@
 import { useRef, useState } from 'react'
-import { Board, Card, Checklist, Label, User } from '../types'
+import { Board, Card, Checklist, Column, Label, User } from '../types'
 import {
   updateCard, deleteCard, addCardMember, removeCardMember,
   addChecklist, deleteChecklist, addChecklistItem,
   toggleChecklistItem, deleteChecklistItem,
   addAttachment, removeAttachment,
+  moveCard,
 } from '../lib/storage'
 import { useTheme } from '../contexts/ThemeContext'
 
@@ -12,6 +13,7 @@ interface Props {
   card: Card
   boardId: string
   boardMembers: User[]
+  columns: Column[]
   onClose: () => void
   onBoardUpdate: (board: Board) => void
 }
@@ -21,7 +23,7 @@ const LABEL_COLORS = [
   '#0079bf', '#00c2e0', '#51e898', '#ff78cb', '#344563',
 ]
 
-export default function CardModal({ card, boardId, boardMembers, onClose, onBoardUpdate }: Props) {
+export default function CardModal({ card, boardId, boardMembers, columns, onClose, onBoardUpdate }: Props) {
   const { theme } = useTheme()
   const isDark = theme === 'dark'
 
@@ -49,6 +51,9 @@ export default function CardModal({ card, boardId, boardMembers, onClose, onBoar
 
   // Members
   const [addingMember, setAddingMember] = useState(false)
+
+  // Move
+  const [showMove, setShowMove] = useState(false)
 
   // Cover
   const coverInputRef = useRef<HTMLInputElement>(null)
@@ -164,6 +169,13 @@ export default function CardModal({ card, boardId, boardMembers, onClose, onBoar
 
   function handleRemoveMember(userId: string) {
     sync(removeCardMember(boardId, card.id, userId))
+  }
+
+  // ── Move card ──────────────────────────────────────────────────────────────
+  function handleMove(destColId: string) {
+    const updated = moveCard(boardId, card.id, destColId, 0)
+    onBoardUpdate(updated)
+    setShowMove(false)
   }
 
   // ── Delete card ────────────────────────────────────────────────────────────
@@ -546,6 +558,14 @@ export default function CardModal({ card, boardId, boardMembers, onClose, onBoar
                 Membros
               </button>
 
+              {/* Move */}
+              <button onClick={() => { setShowMove(!showMove); setAddingMember(false); setShowLabels(false); setShowDatePicker(false) }} className={btn}>
+                <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                </svg>
+                Mover
+              </button>
+
               <div className="pt-1 border-t border-gray-600/30">
                 <button onClick={handleDelete}
                   className="w-full text-left px-3 py-2 bg-red-500/20 hover:bg-red-500/30 rounded-lg text-sm text-red-400 flex items-center gap-2 transition-colors"
@@ -603,6 +623,34 @@ export default function CardModal({ card, boardId, boardMembers, onClose, onBoar
                 {card.dueDate && (
                   <button onClick={removeDueDate} className={`px-3 py-1.5 rounded-lg text-sm ${isDark ? 'bg-gray-600 text-gray-200' : 'bg-gray-200 text-gray-700'}`}>Remover</button>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* Move popover */}
+          {showMove && (
+            <div className={`mt-4 p-3 rounded-xl border ${isDark ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-200'} shadow-lg`}>
+              <p className={`text-xs font-semibold uppercase mb-2 ${muted}`}>Mover para</p>
+              <div className="space-y-1">
+                {columns.map((col) => {
+                  const isCurrent = col.id === card.columnId
+                  return (
+                    <button
+                      key={col.id}
+                      onClick={() => !isCurrent && handleMove(col.id)}
+                      disabled={isCurrent}
+                      className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2 transition-colors
+                        ${isCurrent
+                          ? isDark ? 'bg-gray-600 text-gray-400 cursor-default' : 'bg-gray-100 text-gray-400 cursor-default'
+                          : isDark ? 'hover:bg-gray-600 text-gray-200' : 'hover:bg-gray-100 text-gray-700'
+                        }`}
+                    >
+                      <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: col.color }} />
+                      {col.title}
+                      {isCurrent && <span className={`ml-auto text-xs ${muted}`}>atual</span>}
+                    </button>
+                  )
+                })}
               </div>
             </div>
           )}
