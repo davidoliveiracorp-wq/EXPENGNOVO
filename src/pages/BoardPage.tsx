@@ -89,8 +89,7 @@ export default function BoardPage() {
     }
   }
 
-  function handleAddMember(e?: React.MouseEvent) {
-    e?.stopPropagation()
+  function handleAddMember() {
     if (!inviteFound || !board) return
     setInviteError(null)
     try {
@@ -262,7 +261,7 @@ export default function BoardPage() {
                           </div>
                         </div>
                         <button
-                          onClick={(e) => handleAddMember(e)}
+                          onClick={(e) => { e.stopPropagation(); handleAddMember() }}
                           className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-medium transition-colors flex-shrink-0"
                         >
                           Adicionar
