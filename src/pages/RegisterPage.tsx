@@ -1,9 +1,12 @@
 import { useState, FormEvent } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { useTheme } from '../contexts/ThemeContext'
+import Logo from '../components/Logo'
 
 export default function RegisterPage() {
   const { register } = useAuth()
+  const { theme, toggleTheme } = useTheme()
   const navigate = useNavigate()
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -28,84 +31,79 @@ export default function RegisterPage() {
     }
   }
 
+  const isDark = theme === 'dark'
+
+  const inputClass = `w-full px-4 py-3 rounded-xl focus:outline-none focus:ring-2 transition-colors ${
+    isDark ? 'bg-white/10 border border-white/20 text-white placeholder-white/40 focus:ring-white/40'
+           : 'bg-gray-50 border border-gray-300 text-gray-900 placeholder-gray-400 focus:ring-purple-400'
+  }`
+  const labelClass = `block text-sm font-medium mb-1 ${isDark ? 'text-white/80' : 'text-gray-700'}`
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-900 via-purple-700 to-fuchsia-600">
+    <div className={`min-h-screen flex items-center justify-center transition-colors duration-300 ${
+      isDark ? 'bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900'
+             : 'bg-gradient-to-br from-slate-100 via-purple-50 to-slate-200'
+    }`}>
+      <button onClick={toggleTheme}
+        className={`fixed top-4 right-4 p-2 rounded-full transition-colors ${
+          isDark ? 'bg-white/10 hover:bg-white/20 text-white' : 'bg-black/10 hover:bg-black/20 text-gray-700'
+        }`}>
+        {isDark ? (
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707M17.657 17.657l-.707-.707M6.343 6.343l-.707-.707M12 8a4 4 0 100 8 4 4 0 000-8z" />
+          </svg>
+        ) : (
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+          </svg>
+        )}
+      </button>
+
       <div className="w-full max-w-md px-4">
-        <div className="bg-white/10 backdrop-blur-md rounded-2xl p-8 shadow-2xl border border-white/20">
+        <div className={`rounded-2xl p-8 shadow-2xl border transition-colors duration-300 ${
+          isDark ? 'bg-white/10 backdrop-blur-md border-white/20' : 'bg-white border-gray-200'
+        }`}>
           <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-white/20 rounded-2xl mb-4">
-              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
-              </svg>
+            <div className="inline-flex items-center justify-center px-4 py-2 bg-black rounded-2xl mb-4">
+              <Logo size="md" />
             </div>
-            <h1 className="text-3xl font-bold text-white">KanbanApp</h1>
-            <p className="text-white/70 mt-1">Crie sua conta</p>
+            <p className={`mt-2 text-sm ${isDark ? 'text-white/60' : 'text-gray-500'}`}>Crie sua conta</p>
           </div>
 
           {error && (
-            <div className="mb-4 p-3 bg-red-500/20 border border-red-400/40 rounded-lg text-red-200 text-sm">
-              {error}
-            </div>
+            <div className="mb-4 p-3 bg-red-500/20 border border-red-400/40 rounded-lg text-red-500 text-sm">{error}</div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-white/80 text-sm font-medium mb-1">Nome</label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-white/40"
-                placeholder="Seu nome"
-                required
-              />
+              <label className={labelClass}>Nome</label>
+              <input type="text" value={name} onChange={(e) => setName(e.target.value)}
+                className={inputClass} placeholder="Seu nome" required />
             </div>
             <div>
-              <label className="block text-white/80 text-sm font-medium mb-1">Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-white/40"
-                placeholder="seu@email.com"
-                required
-              />
+              <label className={labelClass}>Email</label>
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                className={inputClass} placeholder="seu@email.com" required />
             </div>
             <div>
-              <label className="block text-white/80 text-sm font-medium mb-1">Senha</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-white/40"
-                placeholder="••••••••"
-                required
-              />
+              <label className={labelClass}>Senha</label>
+              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+                className={inputClass} placeholder="••••••••" required />
             </div>
             <div>
-              <label className="block text-white/80 text-sm font-medium mb-1">Confirmar Senha</label>
-              <input
-                type="password"
-                value={confirm}
-                onChange={(e) => setConfirm(e.target.value)}
-                className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-white/40"
-                placeholder="••••••••"
-                required
-              />
+              <label className={labelClass}>Confirmar Senha</label>
+              <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)}
+                className={inputClass} placeholder="••••••••" required />
             </div>
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3 bg-white text-purple-900 font-semibold rounded-xl hover:bg-white/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed mt-2"
-            >
+            <button type="submit" disabled={loading}
+              className="w-full py-3 bg-black text-white font-semibold rounded-xl hover:bg-gray-800 transition-colors disabled:opacity-60">
               {loading ? 'Criando conta...' : 'Criar conta'}
             </button>
           </form>
 
-          <p className="text-center text-white/60 text-sm mt-6">
+          <p className={`text-center text-sm mt-6 ${isDark ? 'text-white/60' : 'text-gray-500'}`}>
             Já tem conta?{' '}
-            <Link to="/login" className="text-white font-medium hover:underline">
+            <Link to="/login" className={`font-medium hover:underline ${isDark ? 'text-white' : 'text-purple-700'}`}>
               Entrar
             </Link>
           </p>
