@@ -9,12 +9,11 @@ import {
   addBoardMember, findUserByEmail,
 } from '../lib/storage'
 import CardModal from '../components/CardModal'
-import Logo from '../components/Logo'
 
 export default function BoardPage() {
   const { id } = useParams<{ id: string }>()
-  const { user, logout } = useAuth()
-  const { theme, toggleTheme } = useTheme()
+  const { user } = useAuth()
+  const { theme } = useTheme()
   const navigate = useNavigate()
   const [board, setBoard] = useState<Board | null>(null)
   const [selectedCard, setSelectedCard] = useState<Card | null>(null)
@@ -111,7 +110,7 @@ export default function BoardPage() {
   const boardMembers: User[] = board?.members.map((m) => m.user) || []
 
   if (!board) return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-900">
+    <div className="h-full flex items-center justify-center bg-gray-900">
       <div className="text-white text-lg">Carregando...</div>
     </div>
   )
@@ -119,18 +118,15 @@ export default function BoardPage() {
   const isDark = theme === 'dark'
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: isDark ? `linear-gradient(135deg, #111827 0%, ${board.background} 50%, #1f2937 100%)` : `linear-gradient(135deg, #e2e8f0 0%, ${board.background}99 50%, #cbd5e1 100%)` }}>
+    <div className="h-full flex flex-col" style={{ background: isDark ? `linear-gradient(135deg, #111827 0%, ${board.background} 50%, #1f2937 100%)` : `linear-gradient(135deg, #e2e8f0 0%, ${board.background}99 50%, #cbd5e1 100%)` }}>
       <header className="bg-black/30 backdrop-blur-sm border-b border-white/10 flex-shrink-0">
         <div className="px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <button onClick={() => navigate('/')} className="text-white/70 hover:text-white transition-colors">
+            <button onClick={() => navigate('/')} className="text-white/70 hover:text-white transition-colors" title="Voltar aos quadros">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
             </button>
-            <div className="px-2 py-0.5 bg-black rounded-lg hidden sm:block">
-              <Logo size="sm" />
-            </div>
             <h1 className="text-white font-bold text-lg">{board.title}</h1>
           </div>
 
@@ -148,19 +144,6 @@ export default function BoardPage() {
                 </div>
               )}
             </div>
-            {/* Theme toggle */}
-            <button onClick={toggleTheme}
-              className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors">
-              {isDark ? (
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707M17.657 17.657l-.707-.707M6.343 6.343l-.707-.707M12 8a4 4 0 100 8 4 4 0 000-8z" />
-                </svg>
-              ) : (
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                </svg>
-              )}
-            </button>
             <button
               onClick={() => { setShowInvite(!showInvite); setInviteMsg('') }}
               className="flex items-center gap-1 bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg text-sm transition-colors"
@@ -170,12 +153,6 @@ export default function BoardPage() {
               </svg>
               Convidar
             </button>
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-full bg-white/20 flex items-center justify-center text-xs font-semibold text-white">
-                {getInitials(user?.name || 'U')}
-              </div>
-              <button onClick={logout} className="text-white/60 hover:text-white text-sm transition-colors hidden sm:block">Sair</button>
-            </div>
           </div>
         </div>
 
@@ -194,7 +171,7 @@ export default function BoardPage() {
         )}
       </header>
 
-      <div className="flex-1 overflow-x-auto p-4">
+      <div className="flex-1 overflow-x-auto overflow-y-auto p-4">
         <DragDropContext onDragEnd={onDragEnd}>
           <div className="flex gap-4 h-full items-start">
             {board.columns.map((col: Column) => (

@@ -1,4 +1,4 @@
-import { Attachment, Board, Card, CardMember, Checklist, ChecklistItem, Column, Label, User } from '../types'
+import { Attachment, Board, Card, CardMember, Checklist, ChecklistItem, Column, Label, Song, User } from '../types'
 
 function uid() { return crypto.randomUUID() }
 
@@ -320,4 +320,28 @@ export function deleteChecklistItem(boardId: string, cardId: string, checklistId
   const updated = replaceCard(board, cardId, card)
   upsertBoard(updated)
   return { board: updated, card }
+}
+
+// ── Songs ─────────────────────────────────────────────────────────────────────
+
+export function getSongs(): Song[] { return get<Song>('kb_songs') }
+
+export function createSong(data: Omit<Song, 'id' | 'createdAt'>): Song {
+  const song: Song = { ...data, id: uid(), createdAt: new Date().toISOString() }
+  set('kb_songs', [...getSongs(), song])
+  return song
+}
+
+export function updateSong(id: string, data: Partial<Omit<Song, 'id' | 'createdAt' | 'createdBy'>>): Song {
+  const songs = getSongs()
+  const idx = songs.findIndex((s) => s.id === id)
+  if (idx < 0) throw new Error('Song not found')
+  const updated = { ...songs[idx], ...data }
+  songs[idx] = updated
+  set('kb_songs', songs)
+  return updated
+}
+
+export function deleteSong(id: string): void {
+  set('kb_songs', getSongs().filter((s) => s.id !== id))
 }

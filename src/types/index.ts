@@ -88,3 +88,16 @@ export interface Board {
   members: BoardMember[]
   columns: Column[]
 }
+
+export interface Song {
+  id: string
+  title: string
+  artist: string
+  key?: string        // Tom: Dó, Ré, Mi, Fá, Sol, Lá, Si (+#/b)
+  category?: string   // louvor, adoração, contemplação, evangelismo
+  lyrics?: string
+  cifra?: string      // cifra em texto
+  bpm?: number
+  createdAt: string
+  createdBy: string
+}
