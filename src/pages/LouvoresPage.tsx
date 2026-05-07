@@ -151,7 +151,9 @@ export default function LouvoresPage() {
   const [waPhone, setWaPhone] = useState(() => localStorage.getItem('kb_wa_contact') || '')
   const [waCopied, setWaCopied] = useState(false)
   const [waCustomMsg, setWaCustomMsg] = useState('')
-  const [waIncludeLinks, setWaIncludeLinks] = useState(true)
+  const [waIncludeYT, setWaIncludeYT] = useState(true)
+  const [waIncludeCifra, setWaIncludeCifra] = useState(false)
+  const [waIncludeLetra, setWaIncludeLetra] = useState(false)
 
   const searchRef = useRef<HTMLInputElement>(null)
 
@@ -240,15 +242,28 @@ export default function LouvoresPage() {
     const dateStr = d.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })
     const cap = dateStr.charAt(0).toUpperCase() + dateStr.slice(1)
 
+    const songBlocks = selected.map((s, i) => {
+      const key = s.key ? ` *(Tom: ${s.key})*` : ''
+      const parts: string[] = [`${i + 1}. 🎵 *${s.title}*${key}`, `   _${s.artist}_`]
+      if (waIncludeYT && s.youtubeUrl) {
+        parts.push(`   ▶️ ${s.youtubeUrl}`)
+      }
+      if (waIncludeLetra && s.lyrics) {
+        parts.push(``, `   📝 *Letra:*`)
+        s.lyrics.split('\n').forEach((l) => parts.push(`   ${l}`))
+      }
+      if (waIncludeCifra && s.cifra) {
+        parts.push(``, `   🎸 *Cifra:*`)
+        s.cifra.split('\n').forEach((l) => parts.push(`   ${l}`))
+      }
+      return parts.join('\n')
+    })
+
     const lines = [
       `🙏 *Escala de Louvores*`,
       `📅 *${cap}*`,
       ``,
-      ...selected.map((s, i) => {
-        const key = s.key ? ` *(Tom: ${s.key})*` : ''
-        const ytLine = waIncludeLinks && s.youtubeUrl ? `\n   ▶️ ${s.youtubeUrl}` : ''
-        return `${i + 1}. 🎵 *${s.title}*${key}\n   _${s.artist}_${ytLine}`
-      }),
+      ...songBlocks,
     ]
     if (waCustomMsg.trim()) {
       lines.push(``, waCustomMsg.trim())
@@ -763,20 +778,63 @@ export default function LouvoresPage() {
                 </div>
               </div>
 
-              {/* Include YouTube links toggle */}
-              {songs.some((s) => waSelected.has(s.id) && s.youtubeUrl) && (
-                <label className={`flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer ${isDark ? 'bg-gray-700/50' : 'bg-gray-100'}`}>
-                  <input
-                    type="checkbox"
-                    checked={waIncludeLinks}
-                    onChange={(e) => setWaIncludeLinks(e.target.checked)}
-                    className="accent-red-500 w-4 h-4"
-                  />
-                  <svg className="w-4 h-4 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M23.498 6.186a3.016 3.016 0 00-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 00.502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 002.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 002.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
-                  </svg>
-                  <span className={`text-sm ${heading}`}>Incluir links do YouTube na mensagem</span>
-                </label>
+              {/* Content options */}
+              {waSelected.size > 0 && (
+                <div>
+                  <label className={`block text-xs font-semibold uppercase tracking-wide mb-2 ${muted}`}>Incluir na mensagem</label>
+                  <div className={`rounded-xl border divide-y ${isDark ? 'border-gray-700 divide-gray-700' : 'border-gray-200 divide-gray-100'}`}>
+                    {/* YouTube */}
+                    <label className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer ${isDark ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}`}>
+                      <input
+                        type="checkbox"
+                        checked={waIncludeYT}
+                        onChange={(e) => setWaIncludeYT(e.target.checked)}
+                        className="accent-red-500 w-4 h-4 flex-shrink-0"
+                      />
+                      <svg className="w-4 h-4 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M23.498 6.186a3.016 3.016 0 00-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 00.502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 002.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 002.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                      </svg>
+                      <div className="flex-1 min-w-0">
+                        <span className={`text-sm ${heading}`}>Link do YouTube</span>
+                        {!songs.filter(s => waSelected.has(s.id)).some(s => s.youtubeUrl) && (
+                          <span className={`ml-2 text-xs ${muted}`}>(nenhuma música com link)</span>
+                        )}
+                      </div>
+                    </label>
+                    {/* Letra */}
+                    <label className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer ${isDark ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}`}>
+                      <input
+                        type="checkbox"
+                        checked={waIncludeLetra}
+                        onChange={(e) => setWaIncludeLetra(e.target.checked)}
+                        className="accent-orange-500 w-4 h-4 flex-shrink-0"
+                      />
+                      <span className="text-base flex-shrink-0">📝</span>
+                      <div className="flex-1 min-w-0">
+                        <span className={`text-sm ${heading}`}>Letra completa</span>
+                        {!songs.filter(s => waSelected.has(s.id)).some(s => s.lyrics) && (
+                          <span className={`ml-2 text-xs ${muted}`}>(nenhuma música com letra)</span>
+                        )}
+                      </div>
+                    </label>
+                    {/* Cifra */}
+                    <label className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer ${isDark ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}`}>
+                      <input
+                        type="checkbox"
+                        checked={waIncludeCifra}
+                        onChange={(e) => setWaIncludeCifra(e.target.checked)}
+                        className="accent-orange-500 w-4 h-4 flex-shrink-0"
+                      />
+                      <span className="text-base flex-shrink-0">🎸</span>
+                      <div className="flex-1 min-w-0">
+                        <span className={`text-sm ${heading}`}>Cifra (acordes)</span>
+                        {!songs.filter(s => waSelected.has(s.id)).some(s => s.cifra) && (
+                          <span className={`ml-2 text-xs ${muted}`}>(nenhuma música com cifra)</span>
+                        )}
+                      </div>
+                    </label>
+                  </div>
+                </div>
               )}
 
               {/* Custom message */}
