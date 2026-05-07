@@ -224,6 +224,8 @@ export default function BoardPage() {
                       >
                         {col.cards.map((card: Card, index: number) => {
                           const checkSummary = getChecklistSummary(card)
+                          const isOverdue = card.dueDate && new Date(card.dueDate + 'T00:00:00') < new Date(new Date().toDateString())
+                          const isDueSoon = card.dueDate && !isOverdue && (new Date(card.dueDate + 'T00:00:00').getTime() - Date.now()) / 86400000 <= 2
                           return (
                             <Draggable key={card.id} draggableId={card.id} index={index}>
                               {(prov, snap) => (
@@ -232,33 +234,74 @@ export default function BoardPage() {
                                   {...prov.draggableProps}
                                   {...prov.dragHandleProps}
                                   onClick={() => setSelectedCard(card)}
-                                  className={`bg-white rounded-lg p-3 mb-2 cursor-pointer shadow-sm hover:shadow-md transition-shadow ${snap.isDragging ? 'shadow-xl rotate-2 opacity-90' : ''}`}
+                                  className={`bg-white rounded-lg mb-2 cursor-pointer shadow-sm hover:shadow-md transition-shadow overflow-hidden ${snap.isDragging ? 'shadow-xl rotate-2 opacity-90' : ''}`}
                                 >
-                                  <p className="text-gray-800 text-sm font-medium leading-snug">{card.title}</p>
-                                  {card.description && (
-                                    <p className="text-gray-500 text-xs mt-1 line-clamp-2">{card.description}</p>
+                                  {/* Cover image */}
+                                  {card.cover && (
+                                    <img src={card.cover} alt="" className="w-full h-24 object-cover" />
                                   )}
-                                  <div className="flex items-center justify-between mt-2 gap-2 flex-wrap">
-                                    <div className="flex items-center gap-2">
-                                      {checkSummary && (
-                                        <span className={`flex items-center gap-1 text-xs px-1.5 py-0.5 rounded ${checkSummary.done === checkSummary.total ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                                          </svg>
-                                          {checkSummary.done}/{checkSummary.total}
-                                        </span>
-                                      )}
-                                    </div>
-                                    {card.members.length > 0 && (
-                                      <div className="flex -space-x-1">
-                                        {card.members.slice(0, 3).map((m) => (
-                                          <div key={m.id} title={m.user.name}
-                                            className="w-5 h-5 rounded-full bg-purple-600 border border-white flex items-center justify-center text-white text-xs font-medium">
-                                            {getInitials(m.user.name)}
-                                          </div>
+
+                                  <div className="p-3">
+                                    {/* Labels */}
+                                    {card.labels.length > 0 && (
+                                      <div className="flex flex-wrap gap-1 mb-2">
+                                        {card.labels.map((lbl) => (
+                                          <span
+                                            key={lbl.id}
+                                            className="px-2 py-0.5 rounded-full text-xs font-semibold text-white"
+                                            style={{ background: lbl.color }}
+                                          >{lbl.text}</span>
                                         ))}
                                       </div>
                                     )}
+
+                                    <p className="text-gray-800 text-sm font-medium leading-snug">{card.title}</p>
+
+                                    {card.description && (
+                                      <p className="text-gray-500 text-xs mt-1 line-clamp-2">{card.description}</p>
+                                    )}
+
+                                    <div className="flex items-center justify-between mt-2 gap-2 flex-wrap">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        {/* Due date badge */}
+                                        {card.dueDate && (
+                                          <span className={`flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded font-medium ${isOverdue ? 'bg-red-100 text-red-600' : isDueSoon ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-500'}`}>
+                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                            </svg>
+                                            {new Date(card.dueDate + 'T00:00:00').toLocaleDateString('pt-BR')}
+                                          </span>
+                                        )}
+                                        {/* Checklist badge */}
+                                        {checkSummary && (
+                                          <span className={`flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded ${checkSummary.done === checkSummary.total ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                                            </svg>
+                                            {checkSummary.done}/{checkSummary.total}
+                                          </span>
+                                        )}
+                                        {/* Attachments badge */}
+                                        {card.attachments.length > 0 && (
+                                          <span className="flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">
+                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                                            </svg>
+                                            {card.attachments.length}
+                                          </span>
+                                        )}
+                                      </div>
+                                      {card.members.length > 0 && (
+                                        <div className="flex -space-x-1 ml-auto">
+                                          {card.members.slice(0, 3).map((m) => (
+                                            <div key={m.id} title={m.user.name}
+                                              className="w-5 h-5 rounded-full bg-purple-600 border border-white flex items-center justify-center text-white text-xs font-medium">
+                                              {getInitials(m.user.name)}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
                                   </div>
                                 </div>
                               )}

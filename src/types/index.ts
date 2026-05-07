@@ -28,10 +28,18 @@ export interface Checklist {
   items: ChecklistItem[]
 }
 
+export interface Label {
+  id: string
+  text: string
+  color: string
+}
+
 export interface Attachment {
   id: string
   filename: string
   url: string
+  data?: string   // base64 para imagens
+  isImage?: boolean
   cardId: string
   createdAt: string
 }
@@ -47,6 +55,8 @@ export interface Card {
   id: string
   title: string
   description?: string
+  cover?: string       // base64 da imagem de capa
+  labels: Label[]
   order: number
   columnId: string
   creatorId: string

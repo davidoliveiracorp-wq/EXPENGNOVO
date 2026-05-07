@@ -1,4 +1,4 @@
-import { Board, Card, CardMember, Checklist, ChecklistItem, Column, User } from '../types'
+import { Attachment, Board, Card, CardMember, Checklist, ChecklistItem, Column, Label, User } from '../types'
 
 function uid() { return crypto.randomUUID() }
 
@@ -156,7 +156,7 @@ export function addCard(boardId: string, columnId: string, title: string, creato
   const board = getBoardById(boardId)!
   const card: Card = {
     id: uid(), title, order: 0, columnId, creatorId: creator.id,
-    createdAt: new Date().toISOString(), members: [], checklists: [], attachments: [], creator,
+    createdAt: new Date().toISOString(), members: [], checklists: [], attachments: [], labels: [], creator,
   }
   const updated = {
     ...board,
@@ -168,10 +168,31 @@ export function addCard(boardId: string, columnId: string, title: string, creato
   return updated
 }
 
-export function updateCard(boardId: string, cardId: string, data: Partial<Pick<Card, 'title' | 'description' | 'dueDate'>>): { board: Board; card: Card } {
+export function updateCard(boardId: string, cardId: string, data: Partial<Pick<Card, 'title' | 'description' | 'dueDate' | 'cover' | 'labels'>>): { board: Board; card: Card } {
   const board = getBoardById(boardId)!
   const old = findCard(board, cardId)!
   const card = { ...old, ...data }
+  const updated = replaceCard(board, cardId, card)
+  upsertBoard(updated)
+  return { board: updated, card }
+}
+
+export function addAttachment(boardId: string, cardId: string, filename: string, data: string, isImage: boolean): { board: Board; card: Card } {
+  const board = getBoardById(boardId)!
+  const old = findCard(board, cardId)!
+  const attachment: Attachment = {
+    id: uid(), filename, url: '', data, isImage, cardId, createdAt: new Date().toISOString(),
+  }
+  const card = { ...old, attachments: [...old.attachments, attachment] }
+  const updated = replaceCard(board, cardId, card)
+  upsertBoard(updated)
+  return { board: updated, card }
+}
+
+export function removeAttachment(boardId: string, cardId: string, attachmentId: string): { board: Board; card: Card } {
+  const board = getBoardById(boardId)!
+  const old = findCard(board, cardId)!
+  const card = { ...old, attachments: old.attachments.filter((a) => a.id !== attachmentId) }
   const updated = replaceCard(board, cardId, card)
   upsertBoard(updated)
   return { board: updated, card }
