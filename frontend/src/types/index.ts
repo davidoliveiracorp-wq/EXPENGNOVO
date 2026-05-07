@@ -2,6 +2,7 @@ export interface User {
   id: string
   name: string
   email: string
+  phone?: string      // número WhatsApp (ex: 5511999999999)
   avatar?: string
   role?: 'admin' | 'user'
   createdAt: string

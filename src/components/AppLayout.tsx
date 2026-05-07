@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import { Outlet, NavLink } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
@@ -8,11 +8,40 @@ function getInitials(name: string) {
   return name.split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase()
 }
 
+function formatPhone(raw: string) {
+  // remove tudo que não é dígito
+  return raw.replace(/\D/g, '')
+}
+
 export default function AppLayout() {
-  const { user, logout } = useAuth()
+  const { user, logout, updateProfile } = useAuth()
   const { theme, toggleTheme } = useTheme()
   const isDark = theme === 'dark'
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [showProfile, setShowProfile] = useState(false)
+  const [phoneInput, setPhoneInput] = useState('')
+  const [phoneSaved, setPhoneSaved] = useState(false)
+  const profileRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (showProfile) setPhoneInput(user?.phone || '')
+  }, [showProfile, user?.phone])
+
+  useEffect(() => {
+    if (!showProfile) return
+    function handler(e: MouseEvent) {
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) setShowProfile(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showProfile])
+
+  function handleSavePhone() {
+    const cleaned = formatPhone(phoneInput)
+    updateProfile({ phone: cleaned || undefined })
+    setPhoneSaved(true)
+    setTimeout(() => setPhoneSaved(false), 2000)
+  }
 
   const navItems = [
     {
@@ -110,21 +139,73 @@ export default function AppLayout() {
           {isDark ? 'Modo claro' : 'Modo escuro'}
         </button>
 
-        {/* User row */}
-        <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl">
-          <div className="w-7 h-7 rounded-full bg-white/20 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
-            {getInitials(user?.name || 'U')}
-          </div>
-          <span className="text-white/70 text-sm truncate flex-1 min-w-0">{user?.name}</span>
-          <button
-            onClick={logout}
-            className="text-white/30 hover:text-white/80 transition-colors flex-shrink-0"
-            title="Sair"
+        {/* User row + Profile popover */}
+        <div className="relative" ref={profileRef}>
+          {/* Profile popover */}
+          {showProfile && (
+            <div className="absolute bottom-full left-0 right-0 mb-2 bg-gray-900 border border-white/15 rounded-2xl shadow-2xl p-4 z-50">
+              <p className="text-white font-semibold text-sm mb-0.5">{user?.name}</p>
+              <p className="text-white/40 text-xs mb-3 truncate">{user?.email}</p>
+
+              {/* WhatsApp */}
+              <div className="space-y-1.5">
+                <label className="text-white/50 text-xs font-medium flex items-center gap-1.5">
+                  <svg className="w-3.5 h-3.5 text-green-400" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
+                    <path d="M12 0C5.373 0 0 5.373 0 12c0 2.089.534 4.05 1.474 5.757L.057 23.882a.5.5 0 00.61.61l6.126-1.416A11.943 11.943 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.908 0-3.697-.503-5.244-1.382l-.376-.215-3.896.9.915-3.851-.234-.382A9.945 9.945 0 012 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/>
+                  </svg>
+                  WhatsApp (com DDI, ex: 5511999999999)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="tel"
+                    value={phoneInput}
+                    onChange={(e) => setPhoneInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSavePhone()}
+                    placeholder="5511999999999"
+                    className="flex-1 px-2.5 py-1.5 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/30 text-xs focus:outline-none focus:ring-1 focus:ring-green-400/50"
+                  />
+                  <button
+                    onClick={handleSavePhone}
+                    className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${phoneSaved ? 'bg-green-600 text-white' : 'bg-white/15 hover:bg-white/25 text-white'}`}
+                  >
+                    {phoneSaved ? '✓' : 'Salvar'}
+                  </button>
+                </div>
+                {user?.phone && (
+                  <p className="text-green-400 text-xs flex items-center gap-1">
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    Cadastrado: +{user.phone}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div
+            className="flex items-center gap-2 px-3 py-2.5 rounded-xl cursor-pointer hover:bg-white/5 transition-colors"
+            onClick={() => setShowProfile((v) => !v)}
+            title="Perfil / WhatsApp"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-            </svg>
-          </button>
+            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 transition-colors ${user?.phone ? 'bg-green-600' : 'bg-white/20'}`}>
+              {getInitials(user?.name || 'U')}
+            </div>
+            <div className="flex-1 min-w-0">
+              <span className="text-white/70 text-sm truncate block">{user?.name}</span>
+              {user?.phone && <span className="text-green-400/70 text-[10px]">WhatsApp ativo</span>}
+            </div>
+            <button
+              onClick={(e) => { e.stopPropagation(); logout() }}
+              className="text-white/30 hover:text-white/80 transition-colors flex-shrink-0"
+              title="Sair"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
     </div>

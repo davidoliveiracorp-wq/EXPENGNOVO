@@ -69,6 +69,18 @@ export function authGetCurrentUser(): User | null {
   return user
 }
 
+export function updateUserProfile(userId: string, data: { phone?: string; name?: string }): User {
+  const users = get<StoredUser>('kb_users')
+  const idx = users.findIndex((u) => u.id === userId)
+  if (idx < 0) throw new Error('User not found')
+  const updated = { ...users[idx], ...data }
+  users[idx] = updated
+  set('kb_users', users)
+  localStorage.setItem('kb_session', updated.id)
+  const { passwordHash: _, ...user } = updated
+  return user
+}
+
 export function findUserByEmail(email: string): User | null {
   const stored = get<StoredUser>('kb_users').find((u) => u.email.toLowerCase() === email.toLowerCase().trim())
   if (!stored) return null

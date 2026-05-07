@@ -43,6 +43,10 @@ export default function BoardPage() {
   const inviteRef = useRef<HTMLDivElement>(null)
   const inviteInputRef = useRef<HTMLInputElement>(null)
 
+  // ── Notificação de mudança de status ─────────────────────────────────────
+  type MoveEvent = { card: Card; fromCol: Column; toCol: Column }
+  const [pendingNotify, setPendingNotify] = useState<MoveEvent | null>(null)
+
   // Auto-importa o quadro quando o usuário acessa via link de convite (?boardData=...)
   useEffect(() => {
     if (!id || !user) return
@@ -177,11 +181,11 @@ export default function BoardPage() {
     if (destination.droppableId === source.droppableId && destination.index === source.index) return
 
     const srcCol = board.columns.find((c) => c.id === source.droppableId)!
+    const dstCol = board.columns.find((c) => c.id === destination.droppableId)!
     const movedCard = srcCol.cards.find((c) => c.id === draggableId)!
 
     // Optimistic UI update
     const newSrcCards = srcCol.cards.filter((c) => c.id !== draggableId)
-    const dstCol = board.columns.find((c) => c.id === destination.droppableId)!
     const newDstCards = destination.droppableId === source.droppableId
       ? [...newSrcCards] : [...dstCol.cards]
     newDstCards.splice(destination.index, 0, { ...movedCard, columnId: destination.droppableId })
@@ -198,6 +202,11 @@ export default function BoardPage() {
     } : b)
 
     moveCard(board.id, draggableId, destination.droppableId, destination.index)
+
+    // Notifica membros se mudou de coluna
+    if (destination.droppableId !== source.droppableId) {
+      setPendingNotify({ card: movedCard, fromCol: srcCol, toCol: dstCol })
+    }
   }
 
   function handleBoardUpdate(updated: Board) {
@@ -794,6 +803,123 @@ export default function BoardPage() {
           onClose={() => setSelectedCard(null)}
           onBoardUpdate={handleBoardUpdate}
         />
+      )}
+
+      {/* ── Notification modal (card moved between columns) ─────────── */}
+      {pendingNotify && board && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-4">
+          <div className="w-full max-w-md bg-gray-900 border border-white/15 rounded-2xl shadow-2xl overflow-hidden">
+            {/* Header */}
+            <div className="px-5 py-4 border-b border-white/10">
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: pendingNotify.toCol.color }}>
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-white font-semibold text-sm leading-snug truncate">"{pendingNotify.card.title}"</p>
+                  <p className="text-white/50 text-xs mt-0.5">
+                    <span className="text-white/40">{pendingNotify.fromCol.title}</span>
+                    {' → '}
+                    <span className="text-white font-medium">{pendingNotify.toCol.title}</span>
+                  </p>
+                </div>
+                <button onClick={() => setPendingNotify(null)} className="text-white/30 hover:text-white transition-colors flex-shrink-0">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Members list */}
+            <div className="px-5 py-3">
+              <p className="text-white/40 text-xs font-semibold uppercase tracking-wide mb-3">
+                Notificar membros do quadro
+              </p>
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {board.members.map((m) => {
+                  const boardUrl = `${window.location.origin}/boards/${board.id}`
+                  const msgText = `Olá, ${m.user.name}! 👋\n\nO cartão *${pendingNotify.card.title}* foi movido de *${pendingNotify.fromCol.title}* para *${pendingNotify.toCol.title}* no quadro *${board.title}*.\n\n🔗 Acesse: ${boardUrl}`
+                  const emailSubject = encodeURIComponent(`[${board.title}] "${pendingNotify.card.title}" → ${pendingNotify.toCol.title}`)
+                  const emailBody = encodeURIComponent(`Olá, ${m.user.name}!\n\nO cartão "${pendingNotify.card.title}" foi movido de "${pendingNotify.fromCol.title}" para "${pendingNotify.toCol.title}" no quadro "${board.title}".\n\nAcesse: ${boardUrl}`)
+                  const waText = encodeURIComponent(msgText)
+
+                  return (
+                    <div key={m.id} className="flex items-center gap-3 bg-white/5 rounded-xl px-3 py-2.5">
+                      <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
+                        {m.user.name.split(' ').map((n: string) => n[0]).slice(0, 2).join('').toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white text-xs font-medium truncate">{m.user.name}</p>
+                        <p className="text-white/40 text-[10px] truncate">{m.user.email}</p>
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        {/* Email */}
+                        <button
+                          title="Notificar por Email"
+                          onClick={() => window.open(
+                            `https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(m.user.email)}&su=${emailSubject}&body=${emailBody}`,
+                            '_blank'
+                          )}
+                          className="flex items-center gap-1 px-2 py-1 bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 hover:text-blue-300 rounded-lg text-[10px] font-medium transition-colors"
+                        >
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                          </svg>
+                          Email
+                        </button>
+
+                        {/* WhatsApp */}
+                        {m.user.phone ? (
+                          <button
+                            title="Notificar por WhatsApp"
+                            onClick={() => window.open(`https://wa.me/${m.user.phone}?text=${waText}`, '_blank')}
+                            className="flex items-center gap-1 px-2 py-1 bg-green-600/20 hover:bg-green-600/40 text-green-400 hover:text-green-300 rounded-lg text-[10px] font-medium transition-colors"
+                          >
+                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
+                              <path d="M12 0C5.373 0 0 5.373 0 12c0 2.089.534 4.05 1.474 5.757L.057 23.882a.5.5 0 00.61.61l6.126-1.416A11.943 11.943 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.908 0-3.697-.503-5.244-1.382l-.376-.215-3.896.9.915-3.851-.234-.382A9.945 9.945 0 012 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/>
+                            </svg>
+                            WhatsApp
+                          </button>
+                        ) : (
+                          <span className="text-white/20 text-[10px] italic px-1">sem WhatsApp</span>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Bulk actions + dismiss */}
+            <div className="px-5 py-3 border-t border-white/10 flex items-center justify-between gap-3">
+              <button
+                onClick={() => {
+                  // Abre Gmail com todos os emails no campo Para
+                  const emails = board.members.map((m) => m.user.email).join(',')
+                  const subject = encodeURIComponent(`[${board.title}] "${pendingNotify.card.title}" → ${pendingNotify.toCol.title}`)
+                  const body = encodeURIComponent(`Olá, equipe!\n\nO cartão "${pendingNotify.card.title}" foi movido de "${pendingNotify.fromCol.title}" para "${pendingNotify.toCol.title}" no quadro "${board.title}".\n\nAcesse: ${window.location.origin}/boards/${board.id}`)
+                  window.open(`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(emails)}&su=${subject}&body=${body}`, '_blank')
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 rounded-xl text-xs font-medium transition-colors"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+                Notificar todos por Email
+              </button>
+              <button
+                onClick={() => setPendingNotify(null)}
+                className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white/70 hover:text-white rounded-xl text-xs font-medium transition-colors"
+              >
+                Dispensar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
