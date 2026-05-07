@@ -3,7 +3,16 @@ export interface User {
   name: string
   email: string
   avatar?: string
+  role?: 'admin' | 'user'
   createdAt: string
+}
+
+export interface Invite {
+  id: string
+  email: string
+  name: string
+  createdAt: string
+  createdBy: string
 }
 
 export interface BoardMember {

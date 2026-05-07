@@ -1,4 +1,7 @@
-import { Attachment, Board, Card, CardMember, Checklist, ChecklistItem, Column, Label, Song, User } from '../types'
+import { Attachment, Board, Card, CardMember, Checklist, ChecklistItem, Column, Invite, Label, Song, User } from '../types'
+
+// E-mails que recebem role admin automaticamente
+export const ADMIN_EMAILS = ['dasioli@gmail.com']
 
 function uid() { return crypto.randomUUID() }
 
@@ -20,9 +23,10 @@ async function hashPassword(password: string): Promise<string> {
 
 export async function authRegister(name: string, email: string, password: string): Promise<User> {
   const users = get<StoredUser>('kb_users')
-  if (users.find((u) => u.email === email)) throw new Error('Email já cadastrado')
+  if (users.find((u) => u.email.toLowerCase() === email.toLowerCase())) throw new Error('Email já cadastrado')
   const passwordHash = await hashPassword(password)
-  const user: User = { id: uid(), name, email, createdAt: new Date().toISOString() }
+  const role: 'admin' | 'user' = ADMIN_EMAILS.includes(email.toLowerCase()) ? 'admin' : 'user'
+  const user: User = { id: uid(), name, email, role, createdAt: new Date().toISOString() }
   set('kb_users', [...users, { ...user, passwordHash }])
   localStorage.setItem('kb_session', user.id)
   return user
@@ -30,10 +34,17 @@ export async function authRegister(name: string, email: string, password: string
 
 export async function authLogin(email: string, password: string): Promise<User> {
   const users = get<StoredUser>('kb_users')
-  const stored = users.find((u) => u.email === email)
+  const stored = users.find((u) => u.email.toLowerCase() === email.toLowerCase())
   if (!stored) throw new Error('Credenciais inválidas')
   const hash = await hashPassword(password)
   if (hash !== stored.passwordHash) throw new Error('Credenciais inválidas')
+  // Auto-promove emails admin mesmo que a conta tenha sido criada antes do recurso
+  if (ADMIN_EMAILS.includes(stored.email.toLowerCase()) && stored.role !== 'admin') {
+    const idx = users.findIndex((u) => u.id === stored.id)
+    users[idx] = { ...stored, role: 'admin' }
+    set('kb_users', users)
+    stored.role = 'admin'
+  }
   const { passwordHash: _, ...user } = stored
   localStorage.setItem('kb_session', user.id)
   return user
@@ -46,6 +57,14 @@ export function authGetCurrentUser(): User | null {
   if (!id) return null
   const stored = get<StoredUser>('kb_users').find((u) => u.id === id)
   if (!stored) return null
+  // Garante que o admin é promovido mesmo sem novo login
+  if (ADMIN_EMAILS.includes(stored.email.toLowerCase()) && stored.role !== 'admin') {
+    const users = get<StoredUser>('kb_users')
+    const idx = users.findIndex((u) => u.id === stored.id)
+    users[idx] = { ...stored, role: 'admin' }
+    set('kb_users', users)
+    stored.role = 'admin'
+  }
   const { passwordHash: _, ...user } = stored
   return user
 }
@@ -344,4 +363,36 @@ export function updateSong(id: string, data: Partial<Omit<Song, 'id' | 'createdA
 
 export function deleteSong(id: string): void {
   set('kb_songs', getSongs().filter((s) => s.id !== id))
+}
+
+// ── Admin ─────────────────────────────────────────────────────────────────────
+
+export function getUsers(): User[] {
+  return get<StoredUser>('kb_users').map(({ passwordHash: _, ...u }) => u)
+}
+
+export function setUserRole(userId: string, role: 'admin' | 'user'): void {
+  const users = get<StoredUser>('kb_users')
+  const idx = users.findIndex((u) => u.id === userId)
+  if (idx < 0) return
+  users[idx] = { ...users[idx], role }
+  set('kb_users', users)
+}
+
+export function adminDeleteUser(userId: string): void {
+  set('kb_users', get<StoredUser>('kb_users').filter((u) => u.id !== userId))
+}
+
+// ── Invites ───────────────────────────────────────────────────────────────────
+
+export function getInvites(): Invite[] { return get<Invite>('kb_invites') }
+
+export function createInvite(email: string, name: string, createdBy: string): Invite {
+  const invite: Invite = { id: uid(), email, name, createdAt: new Date().toISOString(), createdBy }
+  set('kb_invites', [...getInvites(), invite])
+  return invite
+}
+
+export function deleteInvite(id: string): void {
+  set('kb_invites', getInvites().filter((i) => i.id !== id))
 }

@@ -1,5 +1,5 @@
 import { useState, FormEvent } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
 import Logo from '../components/Logo'
@@ -8,8 +8,10 @@ export default function RegisterPage() {
   const { register } = useAuth()
   const { theme, toggleTheme } = useTheme()
   const navigate = useNavigate()
-  const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
+  const [searchParams] = useSearchParams()
+  // Pré-preenche campos se vier de convite
+  const [name, setName] = useState(searchParams.get('name') || '')
+  const [email, setEmail] = useState(searchParams.get('email') || '')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [error, setError] = useState('')
@@ -67,7 +69,15 @@ export default function RegisterPage() {
             <div className="inline-flex items-center justify-center px-4 py-2 bg-black rounded-2xl mb-4">
               <Logo size="md" />
             </div>
-            <p className={`mt-2 text-sm ${isDark ? 'text-white/60' : 'text-gray-500'}`}>Crie sua conta</p>
+            {searchParams.get('email') ? (
+              <div className="mt-2 px-4 py-2 bg-green-500/20 border border-green-400/40 rounded-xl">
+                <p className={`text-sm font-medium ${isDark ? 'text-green-300' : 'text-green-700'}`}>
+                  🎉 Você foi convidado! Complete seu cadastro abaixo.
+                </p>
+              </div>
+            ) : (
+              <p className={`mt-2 text-sm ${isDark ? 'text-white/60' : 'text-gray-500'}`}>Crie sua conta</p>
+            )}
           </div>
 
           {error && (
