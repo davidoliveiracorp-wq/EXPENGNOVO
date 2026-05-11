@@ -6,10 +6,11 @@ import {
   getUsers, setUserRole, adminDeleteUser,
   getInvites, createInvite, deleteInvite,
   ADMIN_EMAILS,
+  exportBackup, importBackup,
 } from '../lib/storage'
 import { User, Invite } from '../types'
 
-type Tab = 'usuarios' | 'convidar'
+type Tab = 'usuarios' | 'convidar' | 'backup'
 
 function getInitials(name: string) {
   return name.split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase()
@@ -96,6 +97,51 @@ export default function AdminPage() {
     setInvites((prev) => prev.filter((i) => i.id !== id))
   }
 
+  // ── Backup / Restore ──────────────────────────────────────────────────────
+  const [backupMsg, setBackupMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
+  const [importMode, setImportMode] = useState<'merge' | 'replace'>('merge')
+
+  function handleExport() {
+    try {
+      const payload = exportBackup()
+      const json = JSON.stringify(payload, null, 2)
+      const blob = new Blob([json], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      const date = new Date().toISOString().slice(0, 10)
+      a.href = url
+      a.download = `expengnovo-backup-${date}.json`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      const keys = Object.keys(payload.data).length
+      setBackupMsg({ kind: 'ok', text: `Backup exportado com ${keys} chave(s).` })
+    } catch (e) {
+      setBackupMsg({ kind: 'err', text: e instanceof Error ? e.message : 'Falha ao exportar' })
+    }
+  }
+
+  function handleImportFile(file: File) {
+    const reader = new FileReader()
+    reader.onerror = () => setBackupMsg({ kind: 'err', text: 'Não foi possível ler o arquivo' })
+    reader.onload = () => {
+      try {
+        const text = String(reader.result || '')
+        const payload = JSON.parse(text)
+        if (importMode === 'replace' && !confirm(
+          'Modo SUBSTITUIR vai apagar todos os dados atuais (usuários, quadros, louvores, convites) deste navegador antes de importar. Continuar?'
+        )) return
+        const { restored } = importBackup(payload, importMode)
+        setBackupMsg({ kind: 'ok', text: `Importação concluída: ${restored} chave(s) restaurada(s). Recarregando…` })
+        setTimeout(() => window.location.reload(), 1200)
+      } catch (e) {
+        setBackupMsg({ kind: 'err', text: e instanceof Error ? e.message : 'Falha ao importar' })
+      }
+    }
+    reader.readAsText(file)
+  }
+
   // ── Styles ────────────────────────────────────────────────────────────────
   const bg = isDark ? 'bg-gray-900' : 'bg-gray-50'
   const panel = isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
@@ -131,6 +177,7 @@ export default function AdminPage() {
         {([
           { id: 'usuarios', label: `Usuários (${users.length})` },
           { id: 'convidar', label: `Convites enviados (${invites.length})` },
+          { id: 'backup', label: 'Backup' },
         ] as const).map((t) => (
           <button
             key={t.id}
@@ -395,6 +442,110 @@ export default function AdminPage() {
               })}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── Tab: Backup ────────────────────────────────────────────────────── */}
+      {tab === 'backup' && (
+        <div className="max-w-2xl space-y-6">
+          <div className={`p-4 rounded-2xl border ${
+            isDark ? 'bg-yellow-900/20 border-yellow-700/40' : 'bg-yellow-50 border-yellow-200'
+          }`}>
+            <p className={`text-sm ${isDark ? 'text-yellow-200' : 'text-yellow-800'}`}>
+              <strong>Importante:</strong> os dados deste sistema ficam salvos apenas no navegador
+              (localStorage). Limpar o navegador, trocar de dispositivo ou mudar a URL de deploy
+              faz os dados sumirem. <strong>Exporte um backup periodicamente.</strong>
+            </p>
+          </div>
+
+          {/* Exportar */}
+          <div className={`p-6 rounded-2xl border ${panel}`}>
+            <h2 className={`font-semibold text-base mb-2 ${heading}`}>Exportar backup</h2>
+            <p className={`text-sm mb-4 ${muted}`}>
+              Baixa um arquivo JSON com todos os dados deste navegador: usuários, quadros,
+              cards, louvores e convites. Guarde em local seguro.
+            </p>
+            <button
+              onClick={handleExport}
+              className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-5 py-2.5 rounded-xl text-sm font-medium transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4" />
+              </svg>
+              Baixar backup (.json)
+            </button>
+          </div>
+
+          {/* Importar */}
+          <div className={`p-6 rounded-2xl border ${panel}`}>
+            <h2 className={`font-semibold text-base mb-2 ${heading}`}>Importar backup</h2>
+            <p className={`text-sm mb-4 ${muted}`}>
+              Restaura dados a partir de um arquivo JSON exportado anteriormente.
+            </p>
+
+            <div className="mb-4 space-y-2">
+              <label className={`flex items-start gap-2 cursor-pointer text-sm ${heading}`}>
+                <input
+                  type="radio"
+                  name="importMode"
+                  checked={importMode === 'merge'}
+                  onChange={() => setImportMode('merge')}
+                  className="mt-0.5"
+                />
+                <span>
+                  <strong>Mesclar</strong>
+                  <span className={`block text-xs ${muted}`}>
+                    Cada categoria presente no backup substitui a atual; categorias ausentes no
+                    backup permanecem como estão.
+                  </span>
+                </span>
+              </label>
+              <label className={`flex items-start gap-2 cursor-pointer text-sm ${heading}`}>
+                <input
+                  type="radio"
+                  name="importMode"
+                  checked={importMode === 'replace'}
+                  onChange={() => setImportMode('replace')}
+                  className="mt-0.5"
+                />
+                <span>
+                  <strong>Substituir tudo</strong>
+                  <span className={`block text-xs ${muted}`}>
+                    Apaga todos os dados atuais e restaura só o que está no backup.
+                  </span>
+                </span>
+              </label>
+            </div>
+
+            <label className="inline-flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-xl text-sm font-medium transition-colors cursor-pointer">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M17 8l-5-5m0 0L7 8m5-5v12" />
+              </svg>
+              Selecionar arquivo .json
+              <input
+                type="file"
+                accept="application/json,.json"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  if (f) handleImportFile(f)
+                  e.target.value = ''
+                }}
+              />
+            </label>
+          </div>
+
+          {backupMsg && (
+            <div className={`p-3 rounded-xl text-sm ${
+              backupMsg.kind === 'ok'
+                ? (isDark ? 'bg-green-900/30 text-green-300' : 'bg-green-50 text-green-800')
+                : (isDark ? 'bg-red-900/30 text-red-300' : 'bg-red-50 text-red-800')
+            }`}>
+              {backupMsg.text}
+            </div>
+          )}
         </div>
       )}
     </div>

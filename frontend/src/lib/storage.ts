@@ -101,7 +101,10 @@ function upsertBoard(board: Board) {
 }
 
 export function getBoards(userId: string): Board[] {
-  return loadBoards().filter(
+  const boards = loadBoards()
+  const me = get<StoredUser>('kb_users').find((u) => u.id === userId)
+  if (me?.role === 'admin') return boards
+  return boards.filter(
     (b) => b.ownerId === userId || b.members.some((m) => m.userId === userId)
   )
 }
@@ -439,4 +442,56 @@ export function createInvite(email: string, name: string, createdBy: string): In
 
 export function deleteInvite(id: string): void {
   set('kb_invites', getInvites().filter((i) => i.id !== id))
+}
+
+// ── Backup / Restore ──────────────────────────────────────────────────────────
+
+export type BackupPayload = {
+  version: 1
+  exportedAt: string
+  origin: string
+  data: Record<string, string>
+}
+
+export function exportBackup(): BackupPayload {
+  const data: Record<string, string> = {}
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i)
+    if (!key || !key.startsWith('kb_')) continue
+    const value = localStorage.getItem(key)
+    if (value !== null) data[key] = value
+  }
+  return {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    origin: typeof window !== 'undefined' ? window.location.origin : '',
+    data,
+  }
+}
+
+export function importBackup(payload: unknown, mode: 'merge' | 'replace' = 'merge'): { restored: number; keys: string[] } {
+  if (!payload || typeof payload !== 'object') throw new Error('Backup inválido: payload não é um objeto')
+  const p = payload as Partial<BackupPayload>
+  if (p.version !== 1) throw new Error(`Backup inválido: versão ${p.version} não suportada`)
+  if (!p.data || typeof p.data !== 'object') throw new Error('Backup inválido: campo "data" ausente')
+
+  const entries = Object.entries(p.data).filter(([k, v]) => k.startsWith('kb_') && typeof v === 'string')
+  if (entries.length === 0) throw new Error('Backup inválido: nenhum dado kb_* encontrado')
+
+  // Valida que cada valor é JSON válido antes de gravar (defesa contra arquivos corrompidos)
+  for (const [k, v] of entries) {
+    try { JSON.parse(v as string) } catch { throw new Error(`Backup inválido: chave "${k}" não é JSON válido`) }
+  }
+
+  if (mode === 'replace') {
+    const toRemove: string[] = []
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (key && key.startsWith('kb_')) toRemove.push(key)
+    }
+    toRemove.forEach((k) => localStorage.removeItem(k))
+  }
+
+  for (const [k, v] of entries) localStorage.setItem(k, v as string)
+  return { restored: entries.length, keys: entries.map(([k]) => k) }
 }
