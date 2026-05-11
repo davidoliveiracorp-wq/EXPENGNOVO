@@ -3,6 +3,12 @@ import { Attachment, Board, Card, CardMember, Checklist, ChecklistItem, Column, 
 // E-mails que recebem role admin automaticamente
 export const ADMIN_EMAILS = ['dasioli@gmail.com']
 
+// Senha padrão do super-admin auto-criado em localStorage vazio.
+// Pode ser sobrescrita via env VITE_SUPER_ADMIN_PASSWORD na Vercel.
+const SUPER_ADMIN_DEFAULT_PASSWORD =
+  ((import.meta as unknown as { env?: Record<string, string> }).env?.VITE_SUPER_ADMIN_PASSWORD) || 'Admin@2026'
+const SUPER_ADMIN_DEFAULT_NAME = 'David Oliveira'
+
 function uid() { return crypto.randomUUID() }
 
 function get<T>(key: string): T[] {
@@ -494,4 +500,35 @@ export function importBackup(payload: unknown, mode: 'merge' | 'replace' = 'merg
 
   for (const [k, v] of entries) localStorage.setItem(k, v as string)
   return { restored: entries.length, keys: entries.map(([k]) => k) }
+}
+
+// ── Super-admin bootstrap ─────────────────────────────────────────────────────
+
+// Garante que cada e-mail em ADMIN_EMAILS exista como conta admin neste
+// navegador. Se a conta não existir, cria com SUPER_ADMIN_DEFAULT_PASSWORD.
+// Se existir mas não for admin, promove. Chamada no boot do app.
+export async function ensureSuperAdmin(): Promise<void> {
+  const users = get<StoredUser>('kb_users')
+  let changed = false
+  for (const email of ADMIN_EMAILS) {
+    const lower = email.toLowerCase()
+    const idx = users.findIndex((u) => u.email.toLowerCase() === lower)
+    if (idx < 0) {
+      const passwordHash = await hashPassword(SUPER_ADMIN_DEFAULT_PASSWORD)
+      const user: StoredUser = {
+        id: uid(),
+        name: SUPER_ADMIN_DEFAULT_NAME,
+        email,
+        role: 'admin',
+        createdAt: new Date().toISOString(),
+        passwordHash,
+      }
+      users.push(user)
+      changed = true
+    } else if (users[idx].role !== 'admin') {
+      users[idx] = { ...users[idx], role: 'admin' }
+      changed = true
+    }
+  }
+  if (changed) set('kb_users', users)
 }

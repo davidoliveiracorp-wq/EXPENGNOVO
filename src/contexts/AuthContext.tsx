@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
-import { authLogin, authLogout, authRegister, authGetCurrentUser, updateUserProfile } from '../lib/storage'
+import { authLogin, authLogout, authRegister, authGetCurrentUser, updateUserProfile, ensureSuperAdmin } from '../lib/storage'
 import { User } from '../types'
 
 interface AuthContextType {
@@ -18,8 +18,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    setUser(authGetCurrentUser())
-    setLoading(false)
+    (async () => {
+      try { await ensureSuperAdmin() } catch (e) { console.error('ensureSuperAdmin failed', e) }
+      setUser(authGetCurrentUser())
+      setLoading(false)
+    })()
   }, [])
 
   async function login(email: string, password: string) {
