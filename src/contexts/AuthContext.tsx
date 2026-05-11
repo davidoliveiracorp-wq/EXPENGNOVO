@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
-import { authLogin, authLogout, authRegister, authGetCurrentUser, updateUserProfile, ensureSuperAdmin } from '../lib/storage'
+import { authLogin, authLogout, authRegister, authGetCurrentUser, updateUserProfile, ensureSuperAdmin, ensureSeedLoaded } from '../lib/storage'
 import { User } from '../types'
 
 interface AuthContextType {
@@ -19,6 +19,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     (async () => {
+      try {
+        const seed = await ensureSeedLoaded()
+        if (seed.loaded) console.log('Seed inicial carregado em navegador zerado')
+      } catch (e) { console.error('ensureSeedLoaded failed', e) }
       try { await ensureSuperAdmin() } catch (e) { console.error('ensureSuperAdmin failed', e) }
       setUser(authGetCurrentUser())
       setLoading(false)

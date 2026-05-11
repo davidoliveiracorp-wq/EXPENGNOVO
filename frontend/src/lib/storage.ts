@@ -502,6 +502,38 @@ export function importBackup(payload: unknown, mode: 'merge' | 'replace' = 'merg
   return { restored: entries.length, keys: entries.map(([k]) => k) }
 }
 
+// ── Seed bootstrap (carrega /seed.json em navegadores zerados) ────────────────
+
+// Carrega o snapshot de dados em /seed.json se o navegador atual estiver
+// "zerado" (nenhuma chave kb_*). Garante que cada navegador novo abra o site
+// já com todos os quadros, louvores e usuários cadastrados.
+// Não roda se já houver QUALQUER dado kb_* — assim, não sobrescreve o trabalho
+// de quem já está usando o sistema neste navegador.
+export async function ensureSeedLoaded(): Promise<{ loaded: boolean; reason?: string }> {
+  // Já tem dados neste navegador? Não mexe.
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i)
+    if (k && k.startsWith('kb_')) return { loaded: false, reason: 'already has kb_* data' }
+  }
+
+  try {
+    const res = await fetch('/seed.json', { cache: 'no-cache' })
+    if (!res.ok) return { loaded: false, reason: `fetch ${res.status}` }
+    const payload = await res.json()
+    if (payload?.version !== 1 || !payload?.data) return { loaded: false, reason: 'invalid seed' }
+
+    for (const [k, v] of Object.entries(payload.data as Record<string, string>)) {
+      if (k.startsWith('kb_') && typeof v === 'string') {
+        try { JSON.parse(v) } catch { continue } // pula valores corrompidos
+        localStorage.setItem(k, v)
+      }
+    }
+    return { loaded: true }
+  } catch (e) {
+    return { loaded: false, reason: e instanceof Error ? e.message : String(e) }
+  }
+}
+
 // ── Super-admin bootstrap ─────────────────────────────────────────────────────
 
 // Garante que cada e-mail em ADMIN_EMAILS exista como conta admin neste
