@@ -1,10 +1,10 @@
 import { Attachment, Board, Card, CardMember, Checklist, ChecklistItem, Column, Invite, Label, Song, User } from '../types'
 
-// E-mails que recebem role admin automaticamente
+// E-mails que recebem role admin automaticamente.
+// Mantemos apenas o super-admin aqui: a promoção dos demais é decisão do
+// dasioli@gmail.com via /admin (setUserRole).
 export const ADMIN_EMAILS = [
   'dasioli@gmail.com',
-  'david.oliveira.corp@gmail.com',
-  'gerlucinha@gmail.com',
 ]
 
 // E-mails que ganham acesso (como membro) a todos os quadros existentes,
@@ -13,6 +13,8 @@ export const ADMIN_EMAILS = [
 export const BOARD_GUEST_EMAILS: Array<{ email: string; name: string }> = [
   { email: 'contato.ntnathan@gmail.com', name: 'Nathan' },
   { email: 'contatoemilly2108@gmail.com', name: 'Emilly Vitoria' },
+  { email: 'gerlucinha@gmail.com', name: 'Gerlucia Oliveira' },
+  { email: 'david.oliveira.corp@gmail.com', name: 'David Corp' },
 ]
 
 // Senha padrão do super-admin auto-criado em localStorage vazio.
