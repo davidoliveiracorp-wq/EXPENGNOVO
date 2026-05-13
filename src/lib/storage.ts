@@ -1,7 +1,13 @@
 import { Attachment, Board, Card, CardMember, Checklist, ChecklistItem, Column, Invite, Label, Song, User } from '../types'
 
 // E-mails que recebem role admin automaticamente
-export const ADMIN_EMAILS = ['dasioli@gmail.com']
+export const ADMIN_EMAILS = [
+  'dasioli@gmail.com',
+  'contato.ntnathan@gmail.com',
+  'david.oliveira.corp@gmail.com',
+  'gerlucinha@gmail.com',
+  'contatoemilly2108@gmail.com',
+]
 
 // Senha padrão do super-admin auto-criado em localStorage vazio.
 // Pode ser sobrescrita via env VITE_SUPER_ADMIN_PASSWORD na Vercel.
@@ -504,16 +510,28 @@ export function importBackup(payload: unknown, mode: 'merge' | 'replace' = 'merg
 
 // ── Seed bootstrap (carrega /seed.json em navegadores zerados) ────────────────
 
-// Carrega o snapshot de dados em /seed.json se o navegador atual estiver
-// "zerado" (nenhuma chave kb_*). Garante que cada navegador novo abra o site
-// já com todos os quadros, louvores e usuários cadastrados.
-// Não roda se já houver QUALQUER dado kb_* — assim, não sobrescreve o trabalho
-// de quem já está usando o sistema neste navegador.
+function parseArraySafe<T = unknown>(raw: string | null): T[] {
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? (parsed as T[]) : []
+  } catch { return [] }
+}
+
+// Carrega o snapshot de dados em /seed.json sempre que faltar conteúdo
+// substantivo no navegador atual. Mescla `kb_users` para nunca perder contas
+// já criadas localmente, e só sobrescreve `kb_boards`/`kb_songs`/`kb_invites`
+// quando estiverem vazios. Isso garante que usuários novos (que já criaram
+// conta em navegadores não zerados) também recebam os quadros/louvores do
+// snapshot na próxima abertura do app.
 export async function ensureSeedLoaded(): Promise<{ loaded: boolean; reason?: string }> {
-  // Já tem dados neste navegador? Não mexe.
-  for (let i = 0; i < localStorage.length; i++) {
-    const k = localStorage.key(i)
-    if (k && k.startsWith('kb_')) return { loaded: false, reason: 'already has kb_* data' }
+  const existingBoards = parseArraySafe<Board>(localStorage.getItem('kb_boards'))
+  const existingSongs = parseArraySafe<Song>(localStorage.getItem('kb_songs'))
+  const existingInvites = parseArraySafe<Invite>(localStorage.getItem('kb_invites'))
+
+  // Se já tem quadros E louvores, não precisa do seed.
+  if (existingBoards.length > 0 && existingSongs.length > 0) {
+    return { loaded: false, reason: 'already has boards and songs' }
   }
 
   try {
@@ -521,13 +539,49 @@ export async function ensureSeedLoaded(): Promise<{ loaded: boolean; reason?: st
     if (!res.ok) return { loaded: false, reason: `fetch ${res.status}` }
     const payload = await res.json()
     if (payload?.version !== 1 || !payload?.data) return { loaded: false, reason: 'invalid seed' }
+    const data = payload.data as Record<string, string>
 
-    for (const [k, v] of Object.entries(payload.data as Record<string, string>)) {
-      if (k.startsWith('kb_') && typeof v === 'string') {
-        try { JSON.parse(v) } catch { continue } // pula valores corrompidos
-        localStorage.setItem(k, v)
-      }
+    // kb_users: smart-merge (preserva quem já se cadastrou neste navegador).
+    if (typeof data.kb_users === 'string') {
+      try {
+        const seedUsers = JSON.parse(data.kb_users) as StoredUser[]
+        if (Array.isArray(seedUsers)) {
+          const existingUsers = parseArraySafe<StoredUser>(localStorage.getItem('kb_users'))
+          const existingEmails = new Set(
+            existingUsers.map((u) => (u.email || '').toLowerCase())
+          )
+          const merged = [
+            ...existingUsers,
+            ...seedUsers.filter((u) => !existingEmails.has((u.email || '').toLowerCase())),
+          ]
+          localStorage.setItem('kb_users', JSON.stringify(merged))
+        }
+      } catch { /* seed kb_users inválido, ignora */ }
     }
+
+    // kb_boards / kb_songs / kb_invites: só carrega se estiver vazio aqui.
+    const fillIfEmpty = (key: 'kb_boards' | 'kb_songs' | 'kb_invites', isEmpty: boolean) => {
+      if (!isEmpty) return
+      const v = data[key]
+      if (typeof v !== 'string') return
+      try { JSON.parse(v) } catch { return }
+      localStorage.setItem(key, v)
+    }
+    fillIfEmpty('kb_boards', existingBoards.length === 0)
+    fillIfEmpty('kb_songs', existingSongs.length === 0)
+    fillIfEmpty('kb_invites', existingInvites.length === 0)
+
+    // Demais chaves auxiliares (kb_theme, kb_wa_contact, etc.): só seta se
+    // ainda não existir, para não sobrescrever escolhas locais.
+    for (const [k, v] of Object.entries(data)) {
+      if (!k.startsWith('kb_') || typeof v !== 'string') continue
+      if (k === 'kb_users' || k === 'kb_boards' || k === 'kb_songs' || k === 'kb_invites') continue
+      if (k === 'kb_session') continue // sessão é por navegador, nunca importar
+      if (localStorage.getItem(k) !== null) continue
+      try { JSON.parse(v) } catch { continue }
+      localStorage.setItem(k, v)
+    }
+
     return { loaded: true }
   } catch (e) {
     return { loaded: false, reason: e instanceof Error ? e.message : String(e) }
