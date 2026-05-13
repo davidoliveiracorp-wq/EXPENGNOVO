@@ -51,9 +51,30 @@ async function hashPassword(password: string): Promise<string> {
 
 export async function authRegister(name: string, email: string, password: string): Promise<User> {
   const users = get<StoredUser>('kb_users')
-  if (users.find((u) => u.email.toLowerCase() === email.toLowerCase())) throw new Error('Email já cadastrado')
+  const lower = email.toLowerCase()
+  const existingIdx = users.findIndex((u) => u.email.toLowerCase() === lower)
+  const isPreauthorized =
+    ADMIN_EMAILS.includes(lower) ||
+    BOARD_GUEST_EMAILS.some((g) => g.email.toLowerCase() === lower)
+
+  // "Claim" de conta sombra: e-mails pré-autorizados (admin ou board guest)
+  // têm uma conta auto-criada pelo bootstrap com a senha padrão. Quando o
+  // dono real do e-mail acessa via link de convite e preenche o /register,
+  // a senha e o nome dele substituem os da conta sombra.
+  if (existingIdx >= 0) {
+    if (!isPreauthorized) throw new Error('Email já cadastrado')
+    const passwordHash = await hashPassword(password)
+    const existing = users[existingIdx]
+    const updated: StoredUser = { ...existing, name, passwordHash }
+    users[existingIdx] = updated
+    set('kb_users', users)
+    localStorage.setItem('kb_session', updated.id)
+    const { passwordHash: _, ...user } = updated
+    return user
+  }
+
   const passwordHash = await hashPassword(password)
-  const role: 'admin' | 'user' = ADMIN_EMAILS.includes(email.toLowerCase()) ? 'admin' : 'user'
+  const role: 'admin' | 'user' = ADMIN_EMAILS.includes(lower) ? 'admin' : 'user'
   const user: User = { id: uid(), name, email, role, createdAt: new Date().toISOString() }
   set('kb_users', [...users, { ...user, passwordHash }])
   localStorage.setItem('kb_session', user.id)
@@ -637,11 +658,16 @@ export async function ensureSuperAdmin(): Promise<void> {
 
 // ── Board guests bootstrap ────────────────────────────────────────────────────
 
-// Para cada e-mail de BOARD_GUEST_EMAILS que JÁ EXISTE em kb_users neste
-// navegador: sincroniza o nome com o esperado, força role 'user' (rebaixa se
-// estava admin de versão anterior) e adiciona como membro de todos os quadros.
-// NÃO cria conta nova — o usuário se registra via /register (link de convite)
-// definindo a própria senha. Chamada no boot do app e logo após o registro.
+// Para cada e-mail de BOARD_GUEST_EMAILS: garante que exista uma conta
+// (auto-cria com a senha padrão SUPER_ADMIN_DEFAULT_PASSWORD se ainda não
+// existir), sincroniza o nome esperado, força role 'user' (rebaixa se
+// estava admin de versão anterior) e adiciona como membro de todos os
+// quadros. Chamada no boot do app e logo após o registro.
+//
+// A conta auto-criada é "sombra": funciona como placeholder com senha
+// padrão. Quando o dono real do e-mail acessar /register pelo link de
+// convite e definir a senha pessoal, authRegister reconhece o e-mail
+// pré-autorizado e faz "claim" da conta sombra (atualiza senha e nome).
 export async function ensureBoardGuests(): Promise<void> {
   const users = get<StoredUser>('kb_users')
   let usersChanged = false
@@ -649,14 +675,28 @@ export async function ensureBoardGuests(): Promise<void> {
 
   for (const { email, name } of BOARD_GUEST_EMAILS) {
     const lower = email.toLowerCase()
-    const idx = users.findIndex((u) => u.email.toLowerCase() === lower)
-    if (idx < 0) continue // conta ainda não registrada — pula
-    const u = users[idx]
-    const next = { ...u }
-    let touched = false
-    if (u.name !== name) { next.name = name; touched = true }
-    if (u.role !== 'user') { next.role = 'user'; touched = true }
-    if (touched) { users[idx] = next; usersChanged = true }
+    let idx = users.findIndex((u) => u.email.toLowerCase() === lower)
+    if (idx < 0) {
+      const passwordHash = await hashPassword(SUPER_ADMIN_DEFAULT_PASSWORD)
+      const user: StoredUser = {
+        id: uid(),
+        name,
+        email,
+        role: 'user',
+        createdAt: new Date().toISOString(),
+        passwordHash,
+      }
+      users.push(user)
+      idx = users.length - 1
+      usersChanged = true
+    } else {
+      const u = users[idx]
+      const next = { ...u }
+      let touched = false
+      if (u.name !== name) { next.name = name; touched = true }
+      if (u.role !== 'user') { next.role = 'user'; touched = true }
+      if (touched) { users[idx] = next; usersChanged = true }
+    }
     const { passwordHash: _ph, ...pub } = users[idx]
     ensured.push(pub)
   }
