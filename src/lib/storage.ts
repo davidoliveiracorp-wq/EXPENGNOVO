@@ -3,10 +3,16 @@ import { Attachment, Board, Card, CardMember, Checklist, ChecklistItem, Column, 
 // E-mails que recebem role admin automaticamente
 export const ADMIN_EMAILS = [
   'dasioli@gmail.com',
-  'contato.ntnathan@gmail.com',
   'david.oliveira.corp@gmail.com',
   'gerlucinha@gmail.com',
-  'contatoemilly2108@gmail.com',
+]
+
+// E-mails que ganham acesso (como membro) a todos os quadros existentes,
+// mantendo role 'user' (não viram super-admin). Conta é criada com a senha
+// padrão se ainda não existir, e nome é sincronizado a cada boot.
+export const BOARD_GUEST_EMAILS: Array<{ email: string; name: string }> = [
+  { email: 'contato.ntnathan@gmail.com', name: 'Nathan' },
+  { email: 'contatoemilly2108@gmail.com', name: 'Emilly Vitoria' },
 ]
 
 // Senha padrão do super-admin auto-criado em localStorage vazio.
@@ -617,4 +623,67 @@ export async function ensureSuperAdmin(): Promise<void> {
     }
   }
   if (changed) set('kb_users', users)
+}
+
+// ── Board guests bootstrap ────────────────────────────────────────────────────
+
+// Garante que cada e-mail em BOARD_GUEST_EMAILS exista como conta `user`
+// (não admin) e seja membro de todos os quadros existentes. Se a conta
+// estiver com role 'admin' (por estar em ADMIN_EMAILS no passado), rebaixa
+// para 'user'. Sincroniza o nome a cada boot. Chamada no boot do app.
+export async function ensureBoardGuests(): Promise<void> {
+  const users = get<StoredUser>('kb_users')
+  let usersChanged = false
+  const ensured: User[] = []
+
+  for (const { email, name } of BOARD_GUEST_EMAILS) {
+    const lower = email.toLowerCase()
+    let idx = users.findIndex((u) => u.email.toLowerCase() === lower)
+    if (idx < 0) {
+      const passwordHash = await hashPassword(SUPER_ADMIN_DEFAULT_PASSWORD)
+      const user: StoredUser = {
+        id: uid(),
+        name,
+        email,
+        role: 'user',
+        createdAt: new Date().toISOString(),
+        passwordHash,
+      }
+      users.push(user)
+      idx = users.length - 1
+      usersChanged = true
+    } else {
+      const u = users[idx]
+      const next = { ...u }
+      let touched = false
+      if (u.name !== name) { next.name = name; touched = true }
+      if (u.role !== 'user') { next.role = 'user'; touched = true }
+      if (touched) { users[idx] = next; usersChanged = true }
+    }
+    const { passwordHash: _ph, ...pub } = users[idx]
+    ensured.push(pub)
+  }
+  if (usersChanged) set('kb_users', users)
+
+  const boards = loadBoards()
+  let boardsChanged = false
+  const nextBoards = boards.map((b) => {
+    const toAdd = ensured.filter((u) => !b.members.some((m) => m.userId === u.id))
+    if (toAdd.length === 0) return b
+    boardsChanged = true
+    return {
+      ...b,
+      members: [
+        ...b.members,
+        ...toAdd.map((u) => ({
+          id: uid(),
+          boardId: b.id,
+          userId: u.id,
+          role: 'member' as const,
+          user: u,
+        })),
+      ],
+    }
+  })
+  if (boardsChanged) saveBoards(nextBoards)
 }
