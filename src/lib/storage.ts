@@ -8,13 +8,21 @@ export const ADMIN_EMAILS = [
 ]
 
 // E-mails que ganham acesso (como membro) a todos os quadros existentes,
-// mantendo role 'user' (não viram super-admin). Conta é criada com a senha
-// padrão se ainda não existir, e nome é sincronizado a cada boot.
+// mantendo role 'user' (não viram super-admin). A conta NÃO é criada
+// automaticamente — o usuário define a própria senha via /register pelo
+// link de convite. Assim que registra (ou no próximo boot), o nome é
+// sincronizado, role é forçada a 'user' e ele é adicionado como membro
+// de todos os quadros do navegador.
 export const BOARD_GUEST_EMAILS: Array<{ email: string; name: string }> = [
   { email: 'contato.ntnathan@gmail.com', name: 'Nathan' },
   { email: 'contatoemilly2108@gmail.com', name: 'Emilly Vitoria' },
   { email: 'gerlucinha@gmail.com', name: 'Gerlucia Oliveira' },
   { email: 'david.oliveira.corp@gmail.com', name: 'David Corp' },
+  { email: 'emilyassuncao24@gmail.com', name: 'Emilly Assunção' },
+  { email: 'jozadaquepereira06@gmail.com', name: 'Jozadaque Pereira' },
+  { email: 'vanessamoura886@gmail.com', name: 'Vanessa Moura' },
+  { email: 'dafinisousafreitas@gmail.com', name: 'Dafini Sousa' },
+  { email: 'ericfarias998@gmail.com', name: 'Eric Farias' },
 ]
 
 // Senha padrão do super-admin auto-criado em localStorage vazio.
@@ -629,10 +637,11 @@ export async function ensureSuperAdmin(): Promise<void> {
 
 // ── Board guests bootstrap ────────────────────────────────────────────────────
 
-// Garante que cada e-mail em BOARD_GUEST_EMAILS exista como conta `user`
-// (não admin) e seja membro de todos os quadros existentes. Se a conta
-// estiver com role 'admin' (por estar em ADMIN_EMAILS no passado), rebaixa
-// para 'user'. Sincroniza o nome a cada boot. Chamada no boot do app.
+// Para cada e-mail de BOARD_GUEST_EMAILS que JÁ EXISTE em kb_users neste
+// navegador: sincroniza o nome com o esperado, força role 'user' (rebaixa se
+// estava admin de versão anterior) e adiciona como membro de todos os quadros.
+// NÃO cria conta nova — o usuário se registra via /register (link de convite)
+// definindo a própria senha. Chamada no boot do app e logo após o registro.
 export async function ensureBoardGuests(): Promise<void> {
   const users = get<StoredUser>('kb_users')
   let usersChanged = false
@@ -640,32 +649,19 @@ export async function ensureBoardGuests(): Promise<void> {
 
   for (const { email, name } of BOARD_GUEST_EMAILS) {
     const lower = email.toLowerCase()
-    let idx = users.findIndex((u) => u.email.toLowerCase() === lower)
-    if (idx < 0) {
-      const passwordHash = await hashPassword(SUPER_ADMIN_DEFAULT_PASSWORD)
-      const user: StoredUser = {
-        id: uid(),
-        name,
-        email,
-        role: 'user',
-        createdAt: new Date().toISOString(),
-        passwordHash,
-      }
-      users.push(user)
-      idx = users.length - 1
-      usersChanged = true
-    } else {
-      const u = users[idx]
-      const next = { ...u }
-      let touched = false
-      if (u.name !== name) { next.name = name; touched = true }
-      if (u.role !== 'user') { next.role = 'user'; touched = true }
-      if (touched) { users[idx] = next; usersChanged = true }
-    }
+    const idx = users.findIndex((u) => u.email.toLowerCase() === lower)
+    if (idx < 0) continue // conta ainda não registrada — pula
+    const u = users[idx]
+    const next = { ...u }
+    let touched = false
+    if (u.name !== name) { next.name = name; touched = true }
+    if (u.role !== 'user') { next.role = 'user'; touched = true }
+    if (touched) { users[idx] = next; usersChanged = true }
     const { passwordHash: _ph, ...pub } = users[idx]
     ensured.push(pub)
   }
   if (usersChanged) set('kb_users', users)
+  if (ensured.length === 0) return
 
   const boards = loadBoards()
   let boardsChanged = false

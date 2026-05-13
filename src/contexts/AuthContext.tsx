@@ -37,7 +37,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function register(name: string, email: string, password: string) {
     const u = await authRegister(name, email, password)
-    setUser(u)
+    // Se o e-mail está em BOARD_GUEST_EMAILS, sincroniza nome/role e adiciona
+    // como membro de todos os quadros imediatamente (sem precisar de F5).
+    try { await ensureBoardGuests() } catch (e) { console.error('ensureBoardGuests after register failed', e) }
+    setUser(authGetCurrentUser() ?? u)
   }
 
   function updateProfile(data: { phone?: string; name?: string }) {
