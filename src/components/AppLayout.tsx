@@ -2,7 +2,11 @@ import { useRef, useState, useEffect } from 'react'
 import { Outlet, NavLink } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
+import { importBackup } from '../lib/storage'
 import Logo from './Logo'
+
+const LAST_PULLED_KEY = 'kb_last_pulled_at'
+const DISMISSED_KEY = 'kb_dismissed_server_update'
 
 function getInitials(name: string) {
   return name.split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase()
@@ -24,6 +28,65 @@ export default function AppLayout() {
   const [birthdayInput, setBirthdayInput] = useState('')
   const [birthdaySaved, setBirthdaySaved] = useState(false)
   const profileRef = useRef<HTMLDivElement>(null)
+
+  // Banner de "nova versão no servidor"
+  type ServerUpdate = { updatedAt: string; updatedBy: string | null; payload: unknown }
+  const [serverUpdate, setServerUpdate] = useState<ServerUpdate | null>(null)
+  const [applyingUpdate, setApplyingUpdate] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    async function checkServerVersion() {
+      try {
+        const res = await fetch('/api/sync', { method: 'GET', cache: 'no-store' })
+        if (!res.ok || cancelled) return
+        const data = await res.json()
+        if (!data.payload || !data.updatedAt) return
+        const lastPulled = localStorage.getItem(LAST_PULLED_KEY)
+        const dismissed = localStorage.getItem(DISMISSED_KEY)
+        // Já está atualizado
+        if (lastPulled && new Date(data.updatedAt).getTime() <= new Date(lastPulled).getTime()) return
+        // Usuário pediu para ignorar essa versão específica
+        if (dismissed && dismissed === data.updatedAt) return
+        setServerUpdate({ updatedAt: data.updatedAt, updatedBy: data.updatedBy, payload: data.payload })
+      } catch {
+        /* Vercel Blob não configurado ou rede off — silencioso */
+      }
+    }
+    checkServerVersion()
+    return () => { cancelled = true }
+  }, [])
+
+  async function handleApplyServerUpdate() {
+    if (!serverUpdate) return
+    setApplyingUpdate(true)
+    try {
+      importBackup(serverUpdate.payload, 'merge')
+      localStorage.setItem(LAST_PULLED_KEY, serverUpdate.updatedAt)
+      // Recarrega para refletir os novos dados em todas as telas
+      window.location.reload()
+    } catch (e) {
+      console.error('Falha ao aplicar atualização do servidor', e)
+      setApplyingUpdate(false)
+    }
+  }
+
+  function handleDismissServerUpdate() {
+    if (!serverUpdate) return
+    localStorage.setItem(DISMISSED_KEY, serverUpdate.updatedAt)
+    setServerUpdate(null)
+  }
+
+  function formatRelativeTime(iso: string): string {
+    const diff = Date.now() - new Date(iso).getTime()
+    const min = Math.floor(diff / 60000)
+    if (min < 1) return 'agora há pouco'
+    if (min < 60) return `há ${min} min`
+    const hr = Math.floor(min / 60)
+    if (hr < 24) return `há ${hr} h`
+    const days = Math.floor(hr / 24)
+    return `há ${days} dia${days !== 1 ? 's' : ''}`
+  }
 
   useEffect(() => {
     if (showProfile) {
@@ -292,6 +355,33 @@ export default function AppLayout() {
           </button>
           <Logo size="sm" />
         </div>
+
+        {/* Banner de "nova versão no servidor" */}
+        {serverUpdate && (
+          <div className="bg-blue-600/95 text-white text-sm flex items-center gap-3 px-4 py-2 border-b border-blue-700 flex-shrink-0">
+            <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            <span className="flex-1">
+              Nova versão disponível no servidor
+              {serverUpdate.updatedBy ? <> por <strong>{serverUpdate.updatedBy}</strong></> : null}
+              {' '}({formatRelativeTime(serverUpdate.updatedAt)}).
+            </span>
+            <button
+              onClick={handleApplyServerUpdate}
+              disabled={applyingUpdate}
+              className="px-3 py-1 rounded-lg bg-white text-blue-700 hover:bg-blue-50 text-xs font-semibold transition-colors disabled:opacity-60"
+            >
+              {applyingUpdate ? 'Atualizando…' : 'Atualizar agora'}
+            </button>
+            <button
+              onClick={handleDismissServerUpdate}
+              className="px-2 py-1 rounded-lg text-white/80 hover:bg-white/10 text-xs transition-colors"
+            >
+              Ignorar
+            </button>
+          </div>
+        )}
 
         {/* Page content */}
         <main className="flex-1 overflow-auto">

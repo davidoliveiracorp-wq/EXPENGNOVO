@@ -66,11 +66,13 @@ export default function CardModal({ card, boardId, boardTitle, boardMembers, all
   // Assignee picker (description | checklist:<id>)
   const [assigneeOpen, setAssigneeOpen] = useState<string | null>(null)
 
-  // Notificação de atribuição (modal pós-ação) — envio manual via
-  // Gmail compose / WhatsApp. O auto-send via /api/send-notification
-  // está desligado por enquanto (será reativado quando a infra de SMTP
-  // estiver configurada).
-  type AssignmentNotice = { users: User[]; context: string }
+  // Notificação pós-ação (atribuição, novo item de checklist, item concluído).
+  // Envio manual via Gmail compose / WhatsApp.
+  type AssignmentNotice = {
+    users: User[]
+    headline: string  // Título no header do modal (ex: "Novo item em checklist")
+    body: string      // Sentença completa para o corpo do e-mail/WhatsApp
+  }
   const [assignmentNotice, setAssignmentNotice] = useState<AssignmentNotice | null>(null)
 
   // Move
@@ -129,17 +131,25 @@ export default function CardModal({ card, boardId, boardTitle, boardMembers, all
     }
   }
 
-  // Abre o modal pós-atribuição para o usuário disparar a notificação
+  // Abre o modal pós-ação para o usuário disparar a notificação
   // manualmente via Gmail compose ou WhatsApp.
-  function triggerAssignmentNotice(users: User[], context: string) {
-    setAssignmentNotice({ users, context })
+  function triggerAssignmentNotice(users: User[], headline: string, body: string) {
+    setAssignmentNotice({ users, headline, body })
+  }
+
+  function noticeAssign(users: User[], role: string) {
+    triggerAssignmentNotice(
+      users,
+      `Atribuição: ${role}`,
+      `Você foi atribuído como ${role} no cartão "${card.title}" do quadro "${boardTitle}".`,
+    )
   }
 
   function setDescriptionAssignee(user: User | null) {
     if (user) ensureBoardMember(user)
     sync(updateCard(boardId, card.id, { descriptionAssignee: user ?? undefined }))
     setAssigneeOpen(null)
-    if (user) triggerAssignmentNotice([user], 'responsável pela descrição')
+    if (user) noticeAssign([user], 'responsável pela descrição')
   }
 
   function setChecklistAssignee(checklistId: string, user: User | null) {
@@ -148,7 +158,7 @@ export default function CardModal({ card, boardId, boardTitle, boardMembers, all
     setAssigneeOpen(null)
     if (user) {
       const cl = card.checklists.find((c) => c.id === checklistId)
-      triggerAssignmentNotice([user], `responsável pela checklist "${cl?.title || ''}"`)
+      noticeAssign([user], `responsável pela checklist "${cl?.title || ''}"`)
     }
   }
 
@@ -208,15 +218,49 @@ export default function CardModal({ card, boardId, boardTitle, boardMembers, all
     sync(deleteChecklist(boardId, card.id, checklistId))
   }
 
+  // Coleta os usuários a notificar por mudanças em itens da checklist:
+  // o responsável da checklist + membros do card, dedupe por id.
+  function getChecklistNotifyUsers(cl: Checklist): User[] {
+    const map = new Map<string, User>()
+    if (cl.assignee) map.set(cl.assignee.id, cl.assignee)
+    for (const m of card.members) if (!map.has(m.user.id)) map.set(m.user.id, m.user)
+    return Array.from(map.values())
+  }
+
   function handleAddItem(checklistId: string) {
     const text = newItemTexts[checklistId]?.trim()
     if (!text) return
     sync(addChecklistItem(boardId, card.id, checklistId, text))
     setNewItemTexts((p) => ({ ...p, [checklistId]: '' }))
+    const cl = card.checklists.find((c) => c.id === checklistId)
+    if (cl) {
+      const users = getChecklistNotifyUsers(cl)
+      if (users.length > 0) {
+        triggerAssignmentNotice(
+          users,
+          `Novo item em "${cl.title}"`,
+          `Foi adicionado o item "${text}" na checklist "${cl.title}" do cartão "${card.title}" do quadro "${boardTitle}".`,
+        )
+      }
+    }
   }
 
   function handleToggleItem(checklistId: string, itemId: string, completed: boolean) {
     sync(toggleChecklistItem(boardId, card.id, checklistId, itemId, completed))
+    // Notifica apenas quando o item é marcado como concluído (não ao desmarcar).
+    if (!completed) return
+    const cl = card.checklists.find((c) => c.id === checklistId)
+    const item = cl?.items.find((i) => i.id === itemId)
+    if (cl && item) {
+      const users = getChecklistNotifyUsers(cl)
+      if (users.length > 0) {
+        triggerAssignmentNotice(
+          users,
+          `Item concluído em "${cl.title}"`,
+          `O item "${item.title}" da checklist "${cl.title}" do cartão "${card.title}" do quadro "${boardTitle}" foi marcado como concluído.`,
+        )
+      }
+    }
   }
 
   function handleDeleteItem(checklistId: string, itemId: string) {
@@ -231,7 +275,7 @@ export default function CardModal({ card, boardId, boardTitle, boardMembers, all
       addBoardMember(boardId, user)
     }
     sync(addCardMember(boardId, card.id, user))
-    triggerAssignmentNotice([user], 'membro do card')
+    noticeAssign([user], 'membro do card')
   }
 
   function handleRemoveMember(userId: string) {
@@ -919,7 +963,7 @@ export default function CardModal({ card, boardId, boardTitle, boardMembers, all
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-white font-semibold text-sm leading-snug">
-                    Atribuído: {assignmentNotice.context}
+                    {assignmentNotice.headline}
                   </p>
                   <p className="text-white/50 text-xs mt-0.5 truncate">"{card.title}" · {boardTitle}</p>
                 </div>
@@ -934,14 +978,14 @@ export default function CardModal({ card, boardId, boardTitle, boardMembers, all
             {/* Assignees list */}
             <div className="px-5 py-3">
               <p className="text-white/40 text-xs font-semibold uppercase tracking-wide mb-3">
-                Notificar atribuído{assignmentNotice.users.length > 1 ? 's' : ''}
+                Notificar {assignmentNotice.users.length > 1 ? 'destinatários' : 'destinatário'}
               </p>
               <div className="space-y-2 max-h-64 overflow-y-auto">
                 {assignmentNotice.users.map((u) => {
                   const boardUrl = `${window.location.origin}/boards/${boardId}`
-                  const msgText = `Olá, ${u.name}! 👋\n\nVocê foi atribuído como *${assignmentNotice.context}* no cartão *${card.title}* do quadro *${boardTitle}*.\n\n🔗 Acesse: ${boardUrl}`
-                  const emailSubject = encodeURIComponent(`[${boardTitle}] Você foi atribuído: ${card.title}`)
-                  const emailBody = encodeURIComponent(`Olá, ${u.name}!\n\nVocê foi atribuído como ${assignmentNotice.context} no cartão "${card.title}" do quadro "${boardTitle}".\n\nAcesse: ${boardUrl}`)
+                  const msgText = `Olá, ${u.name}! 👋\n\n${assignmentNotice.body}\n\n🔗 Acesse: ${boardUrl}`
+                  const emailSubject = encodeURIComponent(`[${boardTitle}] ${assignmentNotice.headline}: ${card.title}`)
+                  const emailBody = encodeURIComponent(`Olá, ${u.name}!\n\n${assignmentNotice.body}\n\nAcesse: ${boardUrl}`)
                   const waText = encodeURIComponent(msgText)
                   const initials = u.name.split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase()
 

@@ -184,6 +184,8 @@ export default function AdminPage() {
         setSyncMsg({ kind: 'err', text: data?.error || `Falha ao enviar (HTTP ${res.status}).` })
       } else {
         setSyncMsg({ kind: 'ok', text: 'Versão enviada para o servidor. Outros usuários já podem receber.' })
+        // Após push, esta versão é a "última pulled" para evitar o banner aparecer no autor.
+        if (data?.updatedAt) localStorage.setItem('kb_last_pulled_at', data.updatedAt)
         await fetchServerInfo()
       }
     } catch (e) {
@@ -212,6 +214,7 @@ export default function AdminPage() {
         return
       }
       const { restored } = importBackup(data.payload, 'merge')
+      if (data.updatedAt) localStorage.setItem('kb_last_pulled_at', data.updatedAt)
       setSyncMsg({ kind: 'ok', text: `Versão recebida do servidor: ${restored} chave(s) restaurada(s). Recarregando…` })
       setServerInfo({ updatedAt: data.updatedAt, updatedBy: data.updatedBy })
       setTimeout(() => window.location.reload(), 1200)
