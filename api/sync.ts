@@ -5,10 +5,19 @@
 //
 // Requer: Vercel Blob habilitado no projeto (Dashboard → Storage → Create Store
 // → Blob → Connect). O env var BLOB_READ_WRITE_TOKEN é injetado automaticamente.
+//
+// Estratégia: cada POST cria um blob com sufixo aleatório (addRandomSuffix:true),
+// depois deleta os antigos. Assim evita depender da option `allowOverwrite` (que
+// só existe em versões mais novas do @vercel/blob). GET ordena por uploadedAt
+// e retorna o mais recente.
 
-import { put, list } from '@vercel/blob'
+import { put, list, del } from '@vercel/blob'
 
 export const config = { runtime: 'edge' }
+
+// Edge runtime expõe process.env (injetado pela Vercel). Declaração mínima
+// para o type-checker, sem precisar de @types/node.
+declare const process: { env: { [key: string]: string | undefined } }
 
 const BLOB_PATH = 'shared-state.json'
 
@@ -31,7 +40,10 @@ export default async function handler(req: Request): Promise<Response> {
       if (blobs.length === 0) {
         return json({ payload: null, updatedAt: null, updatedBy: null })
       }
-      const latest = blobs[0]
+      const sorted = [...blobs].sort(
+        (a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()
+      )
+      const latest = sorted[0]
       const res = await fetch(latest.url, { cache: 'no-store' })
       if (!res.ok) return json({ error: `Falha ao buscar blob: ${res.status}` }, 502)
       const text = await res.text()
@@ -57,20 +69,29 @@ export default async function handler(req: Request): Promise<Response> {
     if (!body?.payload) {
       return json({ error: 'Campo "payload" é obrigatório.' }, 400)
     }
+    const updatedAt = new Date().toISOString()
     const wrapped = JSON.stringify({
       payload: body.payload,
-      updatedAt: new Date().toISOString(),
+      updatedAt,
       updatedBy: body.updatedBy || 'unknown',
     })
     try {
       const blob = await put(BLOB_PATH, wrapped, {
         access: 'public',
-        addRandomSuffix: false,
-        allowOverwrite: true,
+        addRandomSuffix: true,
         contentType: 'application/json',
         token,
       })
-      return json({ ok: true, url: blob.url, updatedAt: new Date().toISOString() })
+      // Limpeza: deleta blobs antigos do mesmo prefixo para não acumular
+      // (free tier do Vercel Blob é 1 GB; cada push gera ~5 MB).
+      try {
+        const { blobs: all } = await list({ prefix: BLOB_PATH, token })
+        const older = all.filter((b) => b.url !== blob.url)
+        await Promise.all(older.map((b) => del(b.url, { token }).catch(() => null)))
+      } catch {
+        /* falha de cleanup não impede o save */
+      }
+      return json({ ok: true, url: blob.url, updatedAt })
     } catch (e) {
       return json({ error: e instanceof Error ? e.message : 'Erro ao gravar blob.' }, 500)
     }

@@ -11,6 +11,10 @@
 
 export const config = { runtime: 'edge' }
 
+// Edge runtime expõe process.env (injetado pela Vercel). Declaração mínima
+// para o type-checker, sem precisar de @types/node.
+declare const process: { env: { [key: string]: string | undefined } }
+
 interface SendPayload {
   to: string | string[]
   subject: string
