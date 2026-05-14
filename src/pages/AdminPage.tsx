@@ -142,6 +142,97 @@ export default function AdminPage() {
     reader.readAsText(file)
   }
 
+  // ── Sincronização remota (Vercel Blob) ───────────────────────────────────
+  const [syncMsg, setSyncMsg] = useState<{ kind: 'ok' | 'err' | 'info'; text: string } | null>(null)
+  const [syncBusy, setSyncBusy] = useState<'idle' | 'pushing' | 'pulling'>('idle')
+  const [serverInfo, setServerInfo] = useState<{ updatedAt: string | null; updatedBy: string | null } | null>(null)
+
+  async function fetchServerInfo() {
+    try {
+      const res = await fetch('/api/sync', { method: 'GET', cache: 'no-store' })
+      if (!res.ok) {
+        if (res.status === 503) {
+          setServerInfo(null)
+          setSyncMsg({ kind: 'info', text: 'Sincronização remota indisponível: Vercel Blob não configurado.' })
+        }
+        return
+      }
+      const data = await res.json()
+      setServerInfo({ updatedAt: data.updatedAt, updatedBy: data.updatedBy })
+    } catch {
+      /* silencioso na carga inicial */
+    }
+  }
+
+  useEffect(() => { fetchServerInfo() }, [])
+
+  async function handlePushToServer() {
+    if (!confirm(
+      'Enviar a versão deste navegador como a versão oficial para todos os usuários?\n\n' +
+      'Quem clicar em "Receber versão mais recente" depois disso vai sobrescrever os dados locais com esta versão.'
+    )) return
+    setSyncBusy('pushing'); setSyncMsg(null)
+    try {
+      const payload = exportBackup()
+      const res = await fetch('/api/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payload, updatedBy: user?.name || user?.email || 'usuário' }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setSyncMsg({ kind: 'err', text: data?.error || `Falha ao enviar (HTTP ${res.status}).` })
+      } else {
+        setSyncMsg({ kind: 'ok', text: 'Versão enviada para o servidor. Outros usuários já podem receber.' })
+        await fetchServerInfo()
+      }
+    } catch (e) {
+      setSyncMsg({ kind: 'err', text: e instanceof Error ? e.message : 'Erro de rede.' })
+    } finally {
+      setSyncBusy('idle')
+    }
+  }
+
+  async function handlePullFromServer() {
+    if (!confirm(
+      'Receber a versão mais recente do servidor?\n\n' +
+      'Os dados deste navegador serão mesclados (quadros e louvores do servidor sobrescrevem os locais; ' +
+      'contas de usuário são preservadas).'
+    )) return
+    setSyncBusy('pulling'); setSyncMsg(null)
+    try {
+      const res = await fetch('/api/sync', { method: 'GET', cache: 'no-store' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setSyncMsg({ kind: 'err', text: data?.error || `Falha ao receber (HTTP ${res.status}).` })
+        return
+      }
+      if (!data.payload) {
+        setSyncMsg({ kind: 'info', text: 'Nenhuma versão foi enviada para o servidor ainda.' })
+        return
+      }
+      const { restored } = importBackup(data.payload, 'merge')
+      setSyncMsg({ kind: 'ok', text: `Versão recebida do servidor: ${restored} chave(s) restaurada(s). Recarregando…` })
+      setServerInfo({ updatedAt: data.updatedAt, updatedBy: data.updatedBy })
+      setTimeout(() => window.location.reload(), 1200)
+    } catch (e) {
+      setSyncMsg({ kind: 'err', text: e instanceof Error ? e.message : 'Erro de rede.' })
+    } finally {
+      setSyncBusy('idle')
+    }
+  }
+
+  function formatRelativeTime(iso: string): string {
+    const diff = Date.now() - new Date(iso).getTime()
+    const min = Math.floor(diff / 60000)
+    if (min < 1) return 'agora há pouco'
+    if (min < 60) return `há ${min} min`
+    const hr = Math.floor(min / 60)
+    if (hr < 24) return `há ${hr} h`
+    const days = Math.floor(hr / 24)
+    return `há ${days} dia${days !== 1 ? 's' : ''}`
+  }
+
   // ── Styles ────────────────────────────────────────────────────────────────
   const bg = isDark ? 'bg-gray-900' : 'bg-gray-50'
   const panel = isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
@@ -456,6 +547,56 @@ export default function AdminPage() {
               (localStorage). Limpar o navegador, trocar de dispositivo ou mudar a URL de deploy
               faz os dados sumirem. <strong>Exporte um backup periodicamente.</strong>
             </p>
+          </div>
+
+          {/* Sincronização entre usuários */}
+          <div className={`p-6 rounded-2xl border ${panel}`}>
+            <h2 className={`font-semibold text-base mb-2 ${heading}`}>Sincronização entre usuários</h2>
+            <p className={`text-sm mb-4 ${muted}`}>
+              Envie sua versão para o servidor para que <strong>todos os usuários vejam as
+              mesmas alterações</strong>. Quem clicar em "Receber versão mais recente" baixa o que
+              você enviou.
+            </p>
+            {serverInfo?.updatedAt && (
+              <p className={`text-xs mb-4 ${muted}`}>
+                Última versão no servidor: <strong>{formatRelativeTime(serverInfo.updatedAt)}</strong>
+                {serverInfo.updatedBy && <> · por <strong>{serverInfo.updatedBy}</strong></>}
+                <> · <span className="font-mono">{new Date(serverInfo.updatedAt).toLocaleString('pt-BR')}</span></>
+              </p>
+            )}
+            <div className="flex flex-wrap gap-3">
+              <button
+                onClick={handlePushToServer}
+                disabled={syncBusy !== 'idle'}
+                className="flex items-center gap-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-5 py-2.5 rounded-xl text-sm font-medium transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M17 8l-5-5m0 0L7 8m5-5v12" />
+                </svg>
+                {syncBusy === 'pushing' ? 'Enviando…' : 'Salvar para todos no servidor'}
+              </button>
+              <button
+                onClick={handlePullFromServer}
+                disabled={syncBusy !== 'idle'}
+                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-5 py-2.5 rounded-xl text-sm font-medium transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4" />
+                </svg>
+                {syncBusy === 'pulling' ? 'Recebendo…' : 'Receber versão mais recente'}
+              </button>
+            </div>
+            {syncMsg && (
+              <div className={`mt-4 p-3 rounded-lg text-sm ${
+                syncMsg.kind === 'ok'
+                  ? isDark ? 'bg-green-900/30 text-green-300 border border-green-700/40' : 'bg-green-50 text-green-800 border border-green-200'
+                  : syncMsg.kind === 'err'
+                    ? isDark ? 'bg-red-900/30 text-red-300 border border-red-700/40' : 'bg-red-50 text-red-800 border border-red-200'
+                    : isDark ? 'bg-blue-900/30 text-blue-300 border border-blue-700/40' : 'bg-blue-50 text-blue-800 border border-blue-200'
+              }`}>
+                {syncMsg.text}
+              </div>
+            )}
           </div>
 
           {/* Exportar */}
