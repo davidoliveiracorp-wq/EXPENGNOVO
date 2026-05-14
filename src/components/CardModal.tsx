@@ -2,7 +2,7 @@ import { useRef, useState, ChangeEvent } from 'react'
 import { Board, Card, Checklist, Column, Label, User } from '../types'
 import {
   updateCard, deleteCard, addCardMember, removeCardMember,
-  addChecklist, deleteChecklist, addChecklistItem,
+  addChecklist, deleteChecklist, updateChecklist, addChecklistItem,
   toggleChecklistItem, deleteChecklistItem,
   addAttachment, removeAttachment,
   moveCard, addBoardMember,
@@ -90,6 +90,16 @@ export default function CardModal({ card, boardId, boardMembers, allUsers, colum
     setDueDate('')
     sync(updateCard(boardId, card.id, { dueDate: undefined }))
     setShowDatePicker(false)
+  }
+
+  // ── Description due date ──────────────────────────────────────────────────
+  function setDescriptionDueDate(val: string) {
+    sync(updateCard(boardId, card.id, { descriptionDueDate: val || undefined }))
+  }
+
+  // ── Checklist due date ────────────────────────────────────────────────────
+  function setChecklistDueDate(checklistId: string, val: string) {
+    sync(updateChecklist(boardId, card.id, checklistId, { dueDate: val || undefined }))
   }
 
   // ── Labels ─────────────────────────────────────────────────────────────────
@@ -383,8 +393,33 @@ export default function CardModal({ card, boardId, boardMembers, allUsers, colum
 
               {/* Description */}
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <p className={label6}>Descrição</p>
+                <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className={label6}>Descrição</p>
+                    <input
+                      type="date"
+                      value={card.descriptionDueDate || ''}
+                      onChange={(e) => setDescriptionDueDate(e.target.value)}
+                      aria-label="Data da descrição"
+                      title="Data atribuída à descrição"
+                      className={`text-[11px] px-2 py-0.5 rounded border focus:outline-none focus:border-blue-400 ${
+                        card.descriptionDueDate && isDueOverdue(card.descriptionDueDate)
+                          ? 'bg-red-500 text-white border-red-600'
+                          : card.descriptionDueDate && isDueSoon(card.descriptionDueDate)
+                            ? 'bg-yellow-400 text-gray-900 border-yellow-500'
+                            : isDark ? 'bg-gray-700 border-gray-600 text-gray-200' : 'bg-white border-gray-300 text-gray-700'
+                      }`}
+                    />
+                    {card.descriptionDueDate && (
+                      <button
+                        onClick={() => setDescriptionDueDate('')}
+                        title="Limpar data"
+                        className={`text-xs px-1.5 rounded ${isDark ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-700' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'}`}
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
                   {!editDesc && (
                     <button onClick={() => setEditDesc(true)} className={`text-xs px-2 py-0.5 rounded ${isDark ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' : 'bg-gray-200 hover:bg-gray-300 text-gray-600'}`}>
                       Editar
@@ -420,8 +455,33 @@ export default function CardModal({ card, boardId, boardMembers, allUsers, colum
                 const pct = getChecklistProgress(cl)
                 return (
                   <div key={cl.id}>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className={`text-sm font-semibold ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>{cl.title}</span>
+                    <div className="flex items-center justify-between mb-1 gap-2 flex-wrap">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`text-sm font-semibold ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>{cl.title}</span>
+                        <input
+                          type="date"
+                          value={cl.dueDate || ''}
+                          onChange={(e) => setChecklistDueDate(cl.id, e.target.value)}
+                          aria-label={`Data da checklist ${cl.title}`}
+                          title="Data atribuída à checklist"
+                          className={`text-[11px] px-2 py-0.5 rounded border focus:outline-none focus:border-blue-400 ${
+                            cl.dueDate && isDueOverdue(cl.dueDate)
+                              ? 'bg-red-500 text-white border-red-600'
+                              : cl.dueDate && isDueSoon(cl.dueDate)
+                                ? 'bg-yellow-400 text-gray-900 border-yellow-500'
+                                : isDark ? 'bg-gray-700 border-gray-600 text-gray-200' : 'bg-white border-gray-300 text-gray-700'
+                          }`}
+                        />
+                        {cl.dueDate && (
+                          <button
+                            onClick={() => setChecklistDueDate(cl.id, '')}
+                            title="Limpar data"
+                            className={`text-xs px-1.5 rounded ${isDark ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-700' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'}`}
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
                       <button onClick={() => handleDeleteChecklist(cl.id)} className={`text-xs px-2 py-0.5 rounded ${isDark ? 'bg-gray-700 hover:bg-gray-600 text-gray-400' : 'bg-gray-200 hover:bg-gray-300 text-gray-500'}`}>Excluir</button>
                     </div>
                     <div className="flex items-center gap-2 mb-2">

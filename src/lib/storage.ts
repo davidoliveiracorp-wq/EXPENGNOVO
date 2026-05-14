@@ -283,7 +283,7 @@ export function addCard(boardId: string, columnId: string, title: string, creato
   return updated
 }
 
-export function updateCard(boardId: string, cardId: string, data: Partial<Pick<Card, 'title' | 'description' | 'dueDate' | 'cover' | 'labels'>>): { board: Board; card: Card } {
+export function updateCard(boardId: string, cardId: string, data: Partial<Pick<Card, 'title' | 'description' | 'descriptionDueDate' | 'dueDate' | 'cover' | 'labels'>>): { board: Board; card: Card } {
   const board = getBoardById(boardId)!
   const old = findCard(board, cardId)!
   const card = { ...old, ...data }
@@ -387,6 +387,25 @@ export function deleteChecklist(boardId: string, cardId: string, checklistId: st
   const board = getBoardById(boardId)!
   const old = findCard(board, cardId)!
   const card = { ...old, checklists: old.checklists.filter((cl) => cl.id !== checklistId) }
+  const updated = replaceCard(board, cardId, card)
+  upsertBoard(updated)
+  return { board: updated, card }
+}
+
+export function updateChecklist(
+  boardId: string,
+  cardId: string,
+  checklistId: string,
+  data: Partial<Pick<Checklist, 'title' | 'dueDate'>>
+): { board: Board; card: Card } {
+  const board = getBoardById(boardId)!
+  const old = findCard(board, cardId)!
+  const card = {
+    ...old,
+    checklists: old.checklists.map((cl) =>
+      cl.id === checklistId ? { ...cl, ...data } : cl
+    ),
+  }
   const updated = replaceCard(board, cardId, card)
   upsertBoard(updated)
   return { board: updated, card }
