@@ -5,7 +5,7 @@ import {
   addChecklist, deleteChecklist, addChecklistItem,
   toggleChecklistItem, deleteChecklistItem,
   addAttachment, removeAttachment,
-  moveCard,
+  moveCard, addBoardMember,
 } from '../lib/storage'
 import { useTheme } from '../contexts/ThemeContext'
 
@@ -13,6 +13,7 @@ interface Props {
   card: Card
   boardId: string
   boardMembers: User[]
+  allUsers: User[]
   columns: Column[]
   onClose: () => void
   onBoardUpdate: (board: Board) => void
@@ -23,7 +24,7 @@ const LABEL_COLORS = [
   '#0079bf', '#00c2e0', '#51e898', '#ff78cb', '#344563',
 ]
 
-export default function CardModal({ card, boardId, boardMembers, columns, onClose, onBoardUpdate }: Props) {
+export default function CardModal({ card, boardId, boardMembers, allUsers, columns, onClose, onBoardUpdate }: Props) {
   const { theme } = useTheme()
   const isDark = theme === 'dark'
 
@@ -164,6 +165,11 @@ export default function CardModal({ card, boardId, boardMembers, columns, onClos
 
   // ── Members ────────────────────────────────────────────────────────────────
   function handleAddMember(user: User) {
+    // Se o usuário ainda não é membro do quadro, adiciona — assim ele passa
+    // a enxergar o quadro e pode receber a tarefa.
+    if (!boardMembers.some((m) => m.id === user.id)) {
+      addBoardMember(boardId, user)
+    }
     sync(addCardMember(boardId, card.id, user))
   }
 
@@ -216,7 +222,9 @@ export default function CardModal({ card, boardId, boardMembers, columns, onClos
   }
 
   const cardMemberIds = new Set(card.members.map((m) => m.userId))
-  const availableMembers = boardMembers.filter((u) => !cardMemberIds.has(u.id))
+  // Lista todos os cadastrados (não só membros do quadro) — ao adicionar,
+  // o handleAddMember promove a board member automaticamente se necessário.
+  const availableMembers = allUsers.filter((u) => !cardMemberIds.has(u.id))
   const totalItems = card.checklists.reduce((s, cl) => s + cl.items.length, 0)
   const doneItems = card.checklists.reduce((s, cl) => s + cl.items.filter((i) => i.completed).length, 0)
 
@@ -660,22 +668,33 @@ export default function CardModal({ card, boardId, boardMembers, columns, onClos
             <div className={`mt-4 p-3 rounded-xl border ${isDark ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-200'} shadow-lg`}>
               <p className={`text-xs font-semibold uppercase mb-2 ${muted}`}>Adicionar membro</p>
               {availableMembers.length > 0 ? (
-                <div className="space-y-1">
-                  {availableMembers.map((u) => (
-                    <button
-                      key={u.id}
-                      onClick={() => handleAddMember(u)}
-                      className={`w-full text-left px-2 py-1.5 rounded-lg text-sm flex items-center gap-2 ${isDark ? 'hover:bg-gray-600 text-gray-200' : 'hover:bg-gray-100 text-gray-700'}`}
-                    >
-                      <span className="w-6 h-6 rounded-full bg-purple-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                        {getInitials(u.name)}
-                      </span>
-                      {u.name}
-                    </button>
-                  ))}
+                <div className="space-y-1 max-h-64 overflow-y-auto">
+                  {availableMembers.map((u) => {
+                    const isBoardMember = boardMembers.some((m) => m.id === u.id)
+                    return (
+                      <button
+                        key={u.id}
+                        onClick={() => handleAddMember(u)}
+                        className={`w-full text-left px-2 py-1.5 rounded-lg text-sm flex items-center gap-2 ${isDark ? 'hover:bg-gray-600 text-gray-200' : 'hover:bg-gray-100 text-gray-700'}`}
+                      >
+                        <span className="w-6 h-6 rounded-full bg-purple-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                          {getInitials(u.name)}
+                        </span>
+                        <span className="flex-1 min-w-0">
+                          <span className="block truncate">{u.name}</span>
+                          <span className={`block truncate text-[10px] ${muted}`}>{u.email}</span>
+                        </span>
+                        {!isBoardMember && (
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded ${isDark ? 'bg-purple-500/30 text-purple-200' : 'bg-purple-100 text-purple-700'}`}>
+                            + quadro
+                          </span>
+                        )}
+                      </button>
+                    )
+                  })}
                 </div>
               ) : (
-                <p className={`text-xs ${muted}`}>Todos os membros do board já estão neste card.</p>
+                <p className={`text-xs ${muted}`}>Todos os usuários cadastrados já estão neste card.</p>
               )}
             </div>
           )}

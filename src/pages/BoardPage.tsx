@@ -7,6 +7,7 @@ import { Board, Card, Column, User } from '../types'
 import {
   getBoardById, addCard, addColumn, deleteColumn, moveCard,
   addBoardMember, findUserByEmail, removeBoardMember, importBoard,
+  getUsers,
 } from '../lib/storage'
 import CardModal from '../components/CardModal'
 
@@ -224,6 +225,7 @@ export default function BoardPage() {
   }
 
   const boardMembers: User[] = board?.members.map((m) => m.user) || []
+  const allUsers: User[] = getUsers()
 
   if (!board) return (
     <div className="h-full flex items-center justify-center bg-gray-900">
@@ -799,6 +801,7 @@ export default function BoardPage() {
           card={selectedCard}
           boardId={board.id}
           boardMembers={boardMembers}
+          allUsers={allUsers}
           columns={board.columns}
           onClose={() => setSelectedCard(null)}
           onBoardUpdate={handleBoardUpdate}
