@@ -224,6 +224,25 @@ export default function BoardPage() {
     return total > 0 ? { total, done } : null
   }
 
+  // Agrega todos os atribuídos do card (members + responsável da descrição +
+  // responsáveis de cada checklist), deduplicando por userId. Retorna lista
+  // com user + papéis acumulados (string única ex: "membro · responsável pela
+  // descrição · responsável: 'Liderança Adore'").
+  type AssignedUserInfo = { user: User; roles: string[] }
+  function getCardAssignees(card: Card): AssignedUserInfo[] {
+    const map = new Map<string, AssignedUserInfo>()
+    const add = (u: User | undefined, role: string) => {
+      if (!u) return
+      const cur = map.get(u.id)
+      if (cur) cur.roles.push(role)
+      else map.set(u.id, { user: u, roles: [role] })
+    }
+    for (const m of card.members) add(m.user, 'membro')
+    add(card.descriptionAssignee, 'responsável pela descrição')
+    for (const cl of card.checklists) add(cl.assignee, `responsável: "${cl.title}"`)
+    return Array.from(map.values())
+  }
+
   const boardMembers: User[] = board?.members.map((m) => m.user) || []
   const allUsers: User[] = getUsers()
 
@@ -554,16 +573,26 @@ export default function BoardPage() {
                                 {card.attachments.length}
                               </span>
                             )}
-                            {card.members.length > 0 && (
-                              <div className="flex -space-x-1">
-                                {card.members.slice(0, 3).map((m) => (
-                                  <div key={m.id} title={m.user.name}
-                                    className="w-5 h-5 rounded-full bg-purple-600 border border-white/20 flex items-center justify-center text-white text-[9px] font-bold">
-                                    {getInitials(m.user.name)}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
+                            {(() => {
+                              const assignees = getCardAssignees(card)
+                              if (assignees.length === 0) return null
+                              return (
+                                <div className="flex -space-x-1" title={`${assignees.length} atribuído${assignees.length !== 1 ? 's' : ''}`}>
+                                  {assignees.slice(0, 3).map((a) => (
+                                    <div key={a.user.id} title={`${a.user.name} — ${a.roles.join(' · ')}`}
+                                      className="w-5 h-5 rounded-full bg-purple-600 border border-white/20 flex items-center justify-center text-white text-[9px] font-bold">
+                                      {getInitials(a.user.name)}
+                                    </div>
+                                  ))}
+                                  {assignees.length > 3 && (
+                                    <div title={assignees.slice(3).map((a) => a.user.name).join(', ')}
+                                      className="w-5 h-5 rounded-full bg-gray-600 border border-white/20 flex items-center justify-center text-white text-[9px] font-bold">
+                                      +{assignees.length - 3}
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })()}
                             <svg className="w-4 h-4 text-white/20 group-hover:text-white/50 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                             </svg>
@@ -708,16 +737,26 @@ export default function BoardPage() {
                                           </span>
                                         )}
                                       </div>
-                                      {card.members.length > 0 && (
-                                        <div className="flex -space-x-1 ml-auto">
-                                          {card.members.slice(0, 3).map((m) => (
-                                            <div key={m.id} title={m.user.name}
-                                              className="w-5 h-5 rounded-full bg-purple-600 border border-white flex items-center justify-center text-white text-xs font-medium">
-                                              {getInitials(m.user.name)}
-                                            </div>
-                                          ))}
-                                        </div>
-                                      )}
+                                      {(() => {
+                                        const assignees = getCardAssignees(card)
+                                        if (assignees.length === 0) return null
+                                        return (
+                                          <div className="flex -space-x-1 ml-auto" title={`${assignees.length} atribuído${assignees.length !== 1 ? 's' : ''}`}>
+                                            {assignees.slice(0, 3).map((a) => (
+                                              <div key={a.user.id} title={`${a.user.name} — ${a.roles.join(' · ')}`}
+                                                className="w-5 h-5 rounded-full bg-purple-600 border border-white flex items-center justify-center text-white text-xs font-medium">
+                                                {getInitials(a.user.name)}
+                                              </div>
+                                            ))}
+                                            {assignees.length > 3 && (
+                                              <div title={assignees.slice(3).map((a) => a.user.name).join(', ')}
+                                                className="w-5 h-5 rounded-full bg-gray-500 border border-white flex items-center justify-center text-white text-[10px] font-bold">
+                                                +{assignees.length - 3}
+                                              </div>
+                                            )}
+                                          </div>
+                                        )
+                                      })()}
                                     </div>
                                   </div>
                                 </div>
