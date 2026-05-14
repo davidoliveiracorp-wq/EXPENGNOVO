@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, FormEvent } from 'react'
 import { useTheme } from '../contexts/ThemeContext'
-import { getUsers, getBirthdays } from '../lib/storage'
+import { getUsers, getBirthdays, createBirthday, updateBirthday, deleteBirthday } from '../lib/storage'
 import { User, Birthday } from '../types'
 
 const MONTHS = [
@@ -38,9 +38,88 @@ export default function AniversariantesPage() {
 
   const today = new Date()
   const [selectedMonth, setSelectedMonth] = useState<number>(today.getMonth() + 1)
+  const [refreshKey, setRefreshKey] = useState(0)
 
-  const users = useMemo<User[]>(() => getUsers(), [])
-  const standalone = useMemo<Birthday[]>(() => getBirthdays(), [])
+  // ── Formulário de novo / edição ──────────────────────────────────────────
+  const [showForm, setShowForm] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [formName, setFormName] = useState('')
+  const [formDay, setFormDay] = useState<string>('')
+  const [formMonth, setFormMonth] = useState<number>(today.getMonth() + 1)
+  const [formYear, setFormYear] = useState<string>('')
+  const [formError, setFormError] = useState('')
+
+  function resetForm() {
+    setEditingId(null)
+    setFormName('')
+    setFormDay('')
+    setFormMonth(today.getMonth() + 1)
+    setFormYear('')
+    setFormError('')
+  }
+
+  function openCreateForm() {
+    resetForm()
+    setFormMonth(selectedMonth)
+    setShowForm(true)
+  }
+
+  function openEditForm(b: Birthday) {
+    setEditingId(b.id)
+    setFormName(b.name)
+    setFormDay(String(b.day))
+    setFormMonth(b.month)
+    setFormYear(b.year ? String(b.year) : '')
+    setFormError('')
+    setShowForm(true)
+  }
+
+  function closeForm() {
+    setShowForm(false)
+    resetForm()
+  }
+
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    const name = formName.trim()
+    const day = Number(formDay)
+    const month = formMonth
+    const yearNum = formYear.trim() ? Number(formYear) : undefined
+
+    if (!name) { setFormError('Informe o nome.'); return }
+    if (!Number.isInteger(day) || day < 1 || day > 31) { setFormError('Dia inválido (1–31).'); return }
+    if (!Number.isInteger(month) || month < 1 || month > 12) { setFormError('Mês inválido.'); return }
+    if (yearNum !== undefined && (!Number.isInteger(yearNum) || yearNum < 1900 || yearNum > today.getFullYear())) {
+      setFormError(`Ano inválido (1900–${today.getFullYear()}).`); return
+    }
+
+    try {
+      if (editingId) {
+        updateBirthday(editingId, { name, day, month, year: yearNum })
+      } else {
+        createBirthday({ name, day, month, year: yearNum })
+      }
+      setSelectedMonth(month)
+      setRefreshKey((k) => k + 1)
+      closeForm()
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Erro ao salvar.')
+    }
+  }
+
+  function handleDeleteStandalone(b: Birthday) {
+    if (!confirm(`Remover "${b.name}" da lista de aniversariantes?`)) return
+    deleteBirthday(b.id)
+    setRefreshKey((k) => k + 1)
+  }
+
+  const users = useMemo<User[]>(() => getUsers(), [refreshKey])
+  const standalone = useMemo<Birthday[]>(() => getBirthdays(), [refreshKey])
+  const standaloneById = useMemo(() => {
+    const map = new Map<string, Birthday>()
+    for (const b of standalone) map.set(b.id, b)
+    return map
+  }, [standalone])
 
   type Entry = {
     id: string
@@ -134,8 +213,110 @@ export default function AniversariantesPage() {
               <option key={m} value={i + 1}>{m}{i + 1 === today.getMonth() + 1 ? ' (atual)' : ''}</option>
             ))}
           </select>
+          <button
+            onClick={showForm ? closeForm : openCreateForm}
+            className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${
+              showForm
+                ? isDark ? 'bg-gray-700 text-gray-200 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                : 'bg-pink-600 text-white hover:bg-pink-700'
+            }`}
+          >
+            {showForm ? (
+              <>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                Fechar
+              </>
+            ) : (
+              <>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Novo
+              </>
+            )}
+          </button>
         </div>
       </div>
+
+      {showForm && (
+        <form
+          onSubmit={handleSubmit}
+          className={`mb-6 rounded-2xl border p-4 ${panel}`}
+        >
+          <p className={`text-sm font-semibold mb-3 ${heading}`}>
+            {editingId ? 'Editar aniversariante' : 'Novo aniversariante'}
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+            <div className="sm:col-span-5">
+              <label className={`block text-xs mb-1 ${muted}`}>Nome *</label>
+              <input
+                type="text"
+                value={formName}
+                onChange={(e) => setFormName(e.target.value)}
+                placeholder="Nome completo"
+                autoFocus
+                className={`w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-pink-400 ${isDark ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900'}`}
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className={`block text-xs mb-1 ${muted}`}>Dia *</label>
+              <input
+                type="number"
+                min={1}
+                max={31}
+                value={formDay}
+                onChange={(e) => setFormDay(e.target.value)}
+                placeholder="DD"
+                className={`w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-pink-400 ${isDark ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900'}`}
+              />
+            </div>
+            <div className="sm:col-span-3">
+              <label className={`block text-xs mb-1 ${muted}`}>Mês *</label>
+              <select
+                value={formMonth}
+                onChange={(e) => setFormMonth(Number(e.target.value))}
+                className={`w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-pink-400 ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+              >
+                {MONTHS.map((m, i) => (
+                  <option key={m} value={i + 1}>{m}</option>
+                ))}
+              </select>
+            </div>
+            <div className="sm:col-span-2">
+              <label className={`block text-xs mb-1 ${muted}`}>Ano</label>
+              <input
+                type="number"
+                min={1900}
+                max={today.getFullYear()}
+                value={formYear}
+                onChange={(e) => setFormYear(e.target.value)}
+                placeholder="opc."
+                className={`w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-pink-400 ${isDark ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900'}`}
+              />
+            </div>
+          </div>
+          {formError && (
+            <p className="text-xs text-red-400 mt-2">{formError}</p>
+          )}
+          <div className="flex gap-2 mt-4">
+            <button
+              type="submit"
+              className="px-4 py-2 rounded-lg bg-pink-600 hover:bg-pink-700 text-white text-sm font-medium transition-colors"
+            >
+              {editingId ? 'Salvar alterações' : 'Cadastrar'}
+            </button>
+            <button
+              type="button"
+              onClick={closeForm}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${isDark ? 'bg-gray-700 hover:bg-gray-600 text-gray-200' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}
+            >
+              Cancelar
+            </button>
+          </div>
+        </form>
+      )}
 
       {monthEntries.length === 0 ? (
         <div className={`rounded-2xl border p-8 text-center ${panel}`}>
@@ -212,6 +393,34 @@ export default function AniversariantesPage() {
                     )}
                   </div>
                 </div>
+                {entry.kind === 'standalone' && (
+                  <div className="flex flex-col gap-1 flex-shrink-0">
+                    <button
+                      onClick={() => {
+                        const b = standaloneById.get(entry.id.replace(/^b:/, ''))
+                        if (b) openEditForm(b)
+                      }}
+                      title="Editar"
+                      className={`p-1.5 rounded-lg transition-colors ${isDark ? 'hover:bg-gray-700 text-gray-400 hover:text-gray-200' : 'hover:bg-gray-100 text-gray-500 hover:text-gray-700'}`}
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => {
+                        const b = standaloneById.get(entry.id.replace(/^b:/, ''))
+                        if (b) handleDeleteStandalone(b)
+                      }}
+                      title="Excluir"
+                      className={`p-1.5 rounded-lg transition-colors ${isDark ? 'hover:bg-red-500/20 text-gray-400 hover:text-red-400' : 'hover:bg-red-50 text-gray-500 hover:text-red-600'}`}
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
+                )}
               </div>
             )
           })}
