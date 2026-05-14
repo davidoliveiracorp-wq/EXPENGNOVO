@@ -559,12 +559,51 @@ export default function CardModal({ card, boardId, boardMembers, allUsers, colum
               </button>
 
               {/* Members */}
-              <button onClick={() => setAddingMember(!addingMember)} className={btn}>
-                <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                </svg>
-                Membros
-              </button>
+              <div className="relative">
+                <button onClick={() => setAddingMember(!addingMember)} className={btn}>
+                  <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                  Membros
+                </button>
+                {addingMember && (
+                  <div className={`absolute right-0 top-full mt-1 w-72 p-3 rounded-xl border z-20 shadow-2xl ${isDark ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-200'}`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <p className={`text-xs font-semibold uppercase ${muted}`}>Adicionar membro</p>
+                      <button onClick={() => setAddingMember(false)} className={`text-xs ${muted} hover:opacity-100`} aria-label="Fechar">✕</button>
+                    </div>
+                    {availableMembers.length > 0 ? (
+                      <div className="space-y-1 max-h-72 overflow-y-auto">
+                        {availableMembers.map((u) => {
+                          const isBoardMember = boardMembers.some((m) => m.id === u.id)
+                          return (
+                            <button
+                              key={u.id}
+                              onClick={() => handleAddMember(u)}
+                              className={`w-full text-left px-2 py-1.5 rounded-lg text-sm flex items-center gap-2 ${isDark ? 'hover:bg-gray-600 text-gray-200' : 'hover:bg-gray-100 text-gray-700'}`}
+                            >
+                              <span className="w-6 h-6 rounded-full bg-purple-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                                {getInitials(u.name)}
+                              </span>
+                              <span className="flex-1 min-w-0">
+                                <span className="block truncate">{u.name}</span>
+                                <span className={`block truncate text-[10px] ${muted}`}>{u.email}</span>
+                              </span>
+                              {!isBoardMember && (
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded ${isDark ? 'bg-purple-500/30 text-purple-200' : 'bg-purple-100 text-purple-700'}`}>
+                                  + quadro
+                                </span>
+                              )}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    ) : (
+                      <p className={`text-xs ${muted}`}>Todos os usuários cadastrados já estão neste card.</p>
+                    )}
+                  </div>
+                )}
+              </div>
 
               {/* Move */}
               <button onClick={() => { setShowMove(!showMove); setAddingMember(false); setShowLabels(false); setShowDatePicker(false) }} className={btn}>
@@ -663,41 +702,6 @@ export default function CardModal({ card, boardId, boardMembers, allUsers, colum
             </div>
           )}
 
-          {/* Members popover */}
-          {addingMember && (
-            <div className={`mt-4 p-3 rounded-xl border ${isDark ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-200'} shadow-lg`}>
-              <p className={`text-xs font-semibold uppercase mb-2 ${muted}`}>Adicionar membro</p>
-              {availableMembers.length > 0 ? (
-                <div className="space-y-1 max-h-64 overflow-y-auto">
-                  {availableMembers.map((u) => {
-                    const isBoardMember = boardMembers.some((m) => m.id === u.id)
-                    return (
-                      <button
-                        key={u.id}
-                        onClick={() => handleAddMember(u)}
-                        className={`w-full text-left px-2 py-1.5 rounded-lg text-sm flex items-center gap-2 ${isDark ? 'hover:bg-gray-600 text-gray-200' : 'hover:bg-gray-100 text-gray-700'}`}
-                      >
-                        <span className="w-6 h-6 rounded-full bg-purple-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                          {getInitials(u.name)}
-                        </span>
-                        <span className="flex-1 min-w-0">
-                          <span className="block truncate">{u.name}</span>
-                          <span className={`block truncate text-[10px] ${muted}`}>{u.email}</span>
-                        </span>
-                        {!isBoardMember && (
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded ${isDark ? 'bg-purple-500/30 text-purple-200' : 'bg-purple-100 text-purple-700'}`}>
-                            + quadro
-                          </span>
-                        )}
-                      </button>
-                    )
-                  })}
-                </div>
-              ) : (
-                <p className={`text-xs ${muted}`}>Todos os usuários cadastrados já estão neste card.</p>
-              )}
-            </div>
-          )}
         </div>
       </div>
     </div>
