@@ -9,10 +9,9 @@
 // Body esperado (POST JSON):
 //   { to: string | string[], subject: string, text?: string, html?: string }
 
-// Roda em Node runtime (default). Mantido consistente com api/sync.ts —
-// Vercel parece bundlar todas as Edge Functions juntas, então uma deps
-// incompatível em outra função poderia quebrar esta.
-export const config = { runtime: 'nodejs20.x' }
+// Roda em Node runtime (default, sem export const config). Mantido
+// consistente com api/sync.ts — Vercel bundla as Edge Functions juntas,
+// então uma deps incompatível em outra função poderia quebrar esta.
 
 // Declaração mínima para o type-checker (process existe em runtime, mas
 // sem @types/node o TS não sabe).
