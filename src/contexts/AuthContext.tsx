@@ -7,7 +7,7 @@ interface AuthContextType {
   loading: boolean
   login: (email: string, password: string) => Promise<void>
   register: (name: string, email: string, password: string) => Promise<void>
-  updateProfile: (data: { phone?: string; name?: string }) => void
+  updateProfile: (data: { phone?: string; name?: string; birthday?: string }) => void
   logout: () => void
 }
 
@@ -43,7 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(authGetCurrentUser() ?? u)
   }
 
-  function updateProfile(data: { phone?: string; name?: string }) {
+  function updateProfile(data: { phone?: string; name?: string; birthday?: string }) {
     if (!user) return
     const updated = updateUserProfile(user.id, data)
     setUser(updated)

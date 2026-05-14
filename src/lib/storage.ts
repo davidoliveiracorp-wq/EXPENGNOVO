@@ -118,7 +118,7 @@ export function authGetCurrentUser(): User | null {
   return user
 }
 
-export function updateUserProfile(userId: string, data: { phone?: string; name?: string }): User {
+export function updateUserProfile(userId: string, data: { phone?: string; name?: string; birthday?: string }): User {
   const users = get<StoredUser>('kb_users')
   const idx = users.findIndex((u) => u.id === userId)
   if (idx < 0) throw new Error('User not found')

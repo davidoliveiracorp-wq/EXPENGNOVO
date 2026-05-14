@@ -21,11 +21,16 @@ export default function AppLayout() {
   const [showProfile, setShowProfile] = useState(false)
   const [phoneInput, setPhoneInput] = useState('')
   const [phoneSaved, setPhoneSaved] = useState(false)
+  const [birthdayInput, setBirthdayInput] = useState('')
+  const [birthdaySaved, setBirthdaySaved] = useState(false)
   const profileRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (showProfile) setPhoneInput(user?.phone || '')
-  }, [showProfile, user?.phone])
+    if (showProfile) {
+      setPhoneInput(user?.phone || '')
+      setBirthdayInput(user?.birthday || '')
+    }
+  }, [showProfile, user?.phone, user?.birthday])
 
   useEffect(() => {
     if (!showProfile) return
@@ -41,6 +46,12 @@ export default function AppLayout() {
     updateProfile({ phone: cleaned || undefined })
     setPhoneSaved(true)
     setTimeout(() => setPhoneSaved(false), 2000)
+  }
+
+  function handleSaveBirthday() {
+    updateProfile({ birthday: birthdayInput || undefined })
+    setBirthdaySaved(true)
+    setTimeout(() => setBirthdaySaved(false), 2000)
   }
 
   const navItems = [
@@ -74,6 +85,17 @@ export default function AppLayout() {
         <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
             d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+        </svg>
+      ),
+    },
+    {
+      to: '/aniversariantes',
+      end: false,
+      label: 'Aniversariantes',
+      icon: (
+        <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+            d="M12 8c1-2 3-2 3 0s-3 3-3 3-3-1-3-3 2-2 3 0zM4 14h16v6a2 2 0 01-2 2H6a2 2 0 01-2-2v-6zM4 14a2 2 0 012-2h12a2 2 0 012 2M8 14V9m8 5V9" />
         </svg>
       ),
     },
@@ -180,6 +202,31 @@ export default function AppLayout() {
                     Cadastrado: +{user.phone}
                   </p>
                 )}
+              </div>
+
+              {/* Aniversário */}
+              <div className="space-y-1.5 mt-3">
+                <label className="text-white/50 text-xs font-medium flex items-center gap-1.5">
+                  <svg className="w-3.5 h-3.5 text-pink-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c1-2 3-2 3 0s-3 3-3 3-3-1-3-3 2-2 3 0zM6 14h12v6a2 2 0 01-2 2H8a2 2 0 01-2-2v-6z" />
+                  </svg>
+                  Data de nascimento
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="date"
+                    value={birthdayInput}
+                    onChange={(e) => setBirthdayInput(e.target.value)}
+                    className="flex-1 px-2.5 py-1.5 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/30 text-xs focus:outline-none focus:ring-1 focus:ring-pink-400/50"
+                  />
+                  <button
+                    onClick={handleSaveBirthday}
+                    className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${birthdaySaved ? 'bg-pink-600 text-white' : 'bg-white/15 hover:bg-white/25 text-white'}`}
+                  >
+                    {birthdaySaved ? '✓' : 'Salvar'}
+                  </button>
+                </div>
               </div>
             </div>
           )}

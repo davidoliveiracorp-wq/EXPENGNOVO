@@ -4,6 +4,7 @@ export interface User {
   email: string
   phone?: string      // número WhatsApp (ex: 5511999999999)
   avatar?: string
+  birthday?: string   // data de nascimento (YYYY-MM-DD)
   role?: 'admin' | 'user'
   createdAt: string
 }
