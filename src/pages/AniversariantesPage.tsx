@@ -39,6 +39,7 @@ export default function AniversariantesPage() {
   const today = new Date()
   const [selectedMonth, setSelectedMonth] = useState<number>(today.getMonth() + 1)
   const [viewMode, setViewMode] = useState<'mes' | 'todos'>('mes')
+  const [listLayout, setListLayout] = useState<'cards' | 'lista'>('cards')
   const [refreshKey, setRefreshKey] = useState(0)
 
   // ── Formulário de novo / edição ──────────────────────────────────────────
@@ -207,6 +208,99 @@ export default function AniversariantesPage() {
   const cardBase = isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
   const isCurrentMonth = selectedMonth === today.getMonth() + 1
 
+  function renderEntryRow(entry: Entry) {
+    const waLink = entry.phone ? `https://wa.me/${entry.phone}` : null
+    return (
+      <tr
+        key={entry.id}
+        className={`border-b transition-colors ${
+          entry.isToday
+            ? 'bg-pink-500/10 border-pink-500/40'
+            : isDark ? 'border-gray-700 hover:bg-gray-700/30' : 'border-gray-200 hover:bg-gray-50'
+        }`}
+      >
+        <td className="py-2 px-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${
+              entry.isToday ? 'bg-pink-600 text-white' : entry.kind === 'standalone' ? 'bg-amber-600 text-white' : 'bg-purple-600 text-white'
+            }`}>
+              {getInitials(entry.name)}
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <span className={`text-sm font-medium truncate ${heading}`}>{entry.name}</span>
+                {entry.isToday && (
+                  <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-pink-600 text-white">hoje</span>
+                )}
+                {entry.kind === 'standalone' && (
+                  <span className={`text-[9px] uppercase px-1 py-0.5 rounded ${isDark ? 'bg-amber-500/20 text-amber-300' : 'bg-amber-100 text-amber-700'}`}>contato</span>
+                )}
+              </div>
+            </div>
+          </div>
+        </td>
+        <td className={`py-2 px-3 text-xs ${muted} hidden md:table-cell`}>
+          <span className="truncate inline-block max-w-[200px] align-middle">{entry.email || '—'}</span>
+        </td>
+        <td className={`py-2 px-3 text-sm whitespace-nowrap ${heading}`}>
+          {String(entry.day).padStart(2, '0')}/{String(entry.month).padStart(2, '0')}
+          {entry.year ? <span className={`text-[10px] ${muted}`}>/{entry.year}</span> : null}
+        </td>
+        <td className={`py-2 px-3 text-xs whitespace-nowrap ${muted} hidden sm:table-cell`}>
+          {entry.age !== undefined && entry.age >= 0 && entry.age < 130
+            ? `${entry.age} ano${entry.age !== 1 ? 's' : ''}`
+            : '—'}
+        </td>
+        <td className="py-2 px-3 text-right">
+          <div className="inline-flex items-center gap-1">
+            {waLink && (
+              <a
+                href={waLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="WhatsApp"
+                className="p-1.5 rounded-lg text-green-400 hover:text-green-300 hover:bg-green-500/10"
+              >
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
+                  <path d="M12 0C5.373 0 0 5.373 0 12c0 2.089.534 4.05 1.474 5.757L.057 23.882a.5.5 0 00.61.61l6.126-1.416A11.943 11.943 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.908 0-3.697-.503-5.244-1.382l-.376-.215-3.896.9.915-3.851-.234-.382A9.945 9.945 0 012 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/>
+                </svg>
+              </a>
+            )}
+            {entry.kind === 'standalone' && (
+              <>
+                <button
+                  onClick={() => {
+                    const b = standaloneById.get(entry.id.replace(/^b:/, ''))
+                    if (b) openEditForm(b)
+                  }}
+                  title="Editar"
+                  className={`p-1.5 rounded-lg ${isDark ? 'hover:bg-gray-700 text-gray-400 hover:text-gray-200' : 'hover:bg-gray-100 text-gray-500 hover:text-gray-700'}`}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => {
+                    const b = standaloneById.get(entry.id.replace(/^b:/, ''))
+                    if (b) handleDeleteStandalone(b)
+                  }}
+                  title="Excluir"
+                  className={`p-1.5 rounded-lg ${isDark ? 'hover:bg-red-500/20 text-gray-400 hover:text-red-400' : 'hover:bg-red-50 text-gray-500 hover:text-red-600'}`}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
+              </>
+            )}
+          </div>
+        </td>
+      </tr>
+    )
+  }
+
   function renderEntryCard(entry: Entry) {
     const waLink = entry.phone ? `https://wa.me/${entry.phone}` : null
     return (
@@ -331,6 +425,38 @@ export default function AniversariantesPage() {
               Todos
             </button>
           </div>
+
+          {/* Sub-toggle Cards / Lista — só aparece em "Todos" */}
+          {viewMode === 'todos' && (
+            <div className={`flex rounded-lg overflow-hidden border ${isDark ? 'border-gray-700' : 'border-gray-300'}`}>
+              <button
+                onClick={() => setListLayout('cards')}
+                title="Visualizar em cards"
+                className={`p-2 transition-colors ${
+                  listLayout === 'cards'
+                    ? 'bg-black text-white'
+                    : isDark ? 'bg-gray-800 text-gray-400 hover:text-white' : 'bg-white text-gray-500 hover:text-gray-900'
+                }`}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                </svg>
+              </button>
+              <button
+                onClick={() => setListLayout('lista')}
+                title="Visualizar em lista"
+                className={`p-2 transition-colors ${
+                  listLayout === 'lista'
+                    ? 'bg-black text-white'
+                    : isDark ? 'bg-gray-800 text-gray-400 hover:text-white' : 'bg-white text-gray-500 hover:text-gray-900'
+                }`}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+            </div>
+          )}
           {viewMode === 'mes' && (
             <>
               <label className={`text-xs ${muted}`}>Mês:</label>
@@ -462,6 +588,44 @@ export default function AniversariantesPage() {
             <p className={`text-xs mt-2 ${muted}`}>
               Use o botão "Novo" para começar a lista.
             </p>
+          </div>
+        ) : listLayout === 'lista' ? (
+          <div className={`rounded-2xl border overflow-hidden ${panel}`}>
+            <table className="w-full">
+              <thead>
+                <tr className={`text-left text-[10px] uppercase tracking-wide ${muted} ${isDark ? 'bg-gray-900/50' : 'bg-gray-50'}`}>
+                  <th className="py-2 px-3 font-semibold">Nome</th>
+                  <th className="py-2 px-3 font-semibold hidden md:table-cell">E-mail</th>
+                  <th className="py-2 px-3 font-semibold">Data</th>
+                  <th className="py-2 px-3 font-semibold hidden sm:table-cell">Idade</th>
+                  <th className="py-2 px-3 font-semibold text-right">Ações</th>
+                </tr>
+              </thead>
+              {MONTHS.map((monthName, idx) => {
+                const m = idx + 1
+                const entries = entriesByMonth[m] || []
+                if (entries.length === 0) return null
+                const isMesAtual = m === today.getMonth() + 1
+                return (
+                  <tbody key={m}>
+                    <tr className={isDark ? 'bg-gray-900/40' : 'bg-gray-100/60'}>
+                      <td colSpan={5} className={`py-1.5 px-3 text-xs font-semibold uppercase tracking-wide ${heading}`}>
+                        {monthName}
+                        {isMesAtual && (
+                          <span className="ml-2 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-pink-600 text-white normal-case tracking-normal">
+                            mês atual
+                          </span>
+                        )}
+                        <span className={`ml-2 text-[10px] font-normal normal-case tracking-normal ${muted}`}>
+                          · {entries.length} {entries.length === 1 ? 'pessoa' : 'pessoas'}
+                        </span>
+                      </td>
+                    </tr>
+                    {entries.map(renderEntryRow)}
+                  </tbody>
+                )
+              })}
+            </table>
           </div>
         ) : (
           <div className="space-y-6">
