@@ -1,4 +1,4 @@
-import { Attachment, Board, Card, CardMember, Checklist, ChecklistItem, Column, Invite, Label, Song, User } from '../types'
+import { Attachment, Birthday, Board, Card, CardMember, Checklist, ChecklistItem, Column, Invite, Label, Song, User } from '../types'
 
 // E-mails que recebem role admin automaticamente.
 // Mantemos apenas o super-admin aqui: a promoção dos demais é decisão do
@@ -477,6 +477,67 @@ export function setUserRole(userId: string, role: 'admin' | 'user'): void {
 
 export function adminDeleteUser(userId: string): void {
   set('kb_users', get<StoredUser>('kb_users').filter((u) => u.id !== userId))
+}
+
+// ── Birthdays (registros standalone — não-usuários) ──────────────────────────
+
+export function getBirthdays(): Birthday[] { return get<Birthday>('kb_birthdays') }
+
+export function createBirthday(data: Omit<Birthday, 'id' | 'createdAt'>): Birthday {
+  const b: Birthday = { ...data, id: uid(), createdAt: new Date().toISOString() }
+  set('kb_birthdays', [...getBirthdays(), b])
+  return b
+}
+
+export function updateBirthday(id: string, data: Partial<Omit<Birthday, 'id' | 'createdAt'>>): Birthday {
+  const list = getBirthdays()
+  const idx = list.findIndex((b) => b.id === id)
+  if (idx < 0) throw new Error('Birthday not found')
+  const updated = { ...list[idx], ...data }
+  list[idx] = updated
+  set('kb_birthdays', list)
+  return updated
+}
+
+export function deleteBirthday(id: string): void {
+  set('kb_birthdays', getBirthdays().filter((b) => b.id !== id))
+}
+
+// Lista pré-carregada no boot (idempotente — não duplica).
+export const SEED_BIRTHDAYS: Array<{ name: string; month: number; day: number }> = [
+  { name: 'Emily Giovana', month: 10, day: 24 },
+  { name: 'Beatriz G.', month: 7, day: 1 },
+  { name: 'Dafiny', month: 6, day: 30 },
+  { name: 'Lara', month: 6, day: 19 },
+  { name: 'Emilly O.', month: 11, day: 11 },
+  { name: 'Isabella', month: 7, day: 18 },
+  { name: 'Érick', month: 5, day: 7 },
+  { name: 'Thomaz', month: 5, day: 7 },
+  { name: 'Maicon', month: 10, day: 19 },
+  { name: 'Lucas', month: 12, day: 8 },
+  { name: 'Ryan', month: 7, day: 5 },
+  { name: 'Jonas', month: 6, day: 23 },
+]
+
+// Garante que cada item de SEED_BIRTHDAYS exista em kb_birthdays. Match por
+// nome (case-insensitive) + mês + dia, para evitar duplicação após reboots.
+export async function ensureBirthdays(): Promise<void> {
+  const existing = getBirthdays()
+  const key = (n: string, m: number, d: number) => `${n.toLowerCase().trim()}|${m}|${d}`
+  const existingSet = new Set(existing.map((b) => key(b.name, b.month, b.day)))
+  let changed = false
+  for (const sb of SEED_BIRTHDAYS) {
+    if (existingSet.has(key(sb.name, sb.month, sb.day))) continue
+    existing.push({
+      id: uid(),
+      name: sb.name,
+      month: sb.month,
+      day: sb.day,
+      createdAt: new Date().toISOString(),
+    })
+    changed = true
+  }
+  if (changed) set('kb_birthdays', existing)
 }
 
 // ── Invites ───────────────────────────────────────────────────────────────────

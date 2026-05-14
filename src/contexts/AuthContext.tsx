@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
-import { authLogin, authLogout, authRegister, authGetCurrentUser, updateUserProfile, ensureSuperAdmin, ensureSeedLoaded, ensureBoardGuests } from '../lib/storage'
+import { authLogin, authLogout, authRegister, authGetCurrentUser, updateUserProfile, ensureSuperAdmin, ensureSeedLoaded, ensureBoardGuests, ensureBirthdays } from '../lib/storage'
 import { User } from '../types'
 
 interface AuthContextType {
@@ -25,6 +25,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch (e) { console.error('ensureSeedLoaded failed', e) }
       try { await ensureSuperAdmin() } catch (e) { console.error('ensureSuperAdmin failed', e) }
       try { await ensureBoardGuests() } catch (e) { console.error('ensureBoardGuests failed', e) }
+      try { await ensureBirthdays() } catch (e) { console.error('ensureBirthdays failed', e) }
       setUser(authGetCurrentUser())
       setLoading(false)
     })()

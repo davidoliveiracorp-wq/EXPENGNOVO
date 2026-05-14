@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useTheme } from '../contexts/ThemeContext'
-import { getUsers } from '../lib/storage'
-import { User } from '../types'
+import { getUsers, getBirthdays } from '../lib/storage'
+import { User, Birthday } from '../types'
 
 const MONTHS = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -40,22 +40,67 @@ export default function AniversariantesPage() {
   const [selectedMonth, setSelectedMonth] = useState<number>(today.getMonth() + 1)
 
   const users = useMemo<User[]>(() => getUsers(), [])
+  const standalone = useMemo<Birthday[]>(() => getBirthdays(), [])
 
-  const monthUsers = useMemo(() => {
-    type Entry = { user: User; day: number; month: number; year: number; age: number; isToday: boolean }
+  type Entry = {
+    id: string
+    name: string
+    email?: string
+    phone?: string
+    day: number
+    month: number
+    year?: number
+    age?: number
+    isToday: boolean
+    kind: 'user' | 'standalone'
+  }
+
+  const monthEntries = useMemo<Entry[]>(() => {
     const out: Entry[] = []
+    const todayMonth = today.getMonth() + 1
+    const todayDay = today.getDate()
+
     for (const u of users) {
       const parsed = parseBirthday(u.birthday || '')
-      if (!parsed) continue
-      if (parsed.month !== selectedMonth) continue
+      if (!parsed || parsed.month !== selectedMonth) continue
       const age = computeAge(parsed.year, parsed.month, parsed.day, today)
-      const isToday =
-        parsed.month === today.getMonth() + 1 && parsed.day === today.getDate()
-      out.push({ user: u, day: parsed.day, month: parsed.month, year: parsed.year, age, isToday })
+      out.push({
+        id: `u:${u.id}`,
+        name: u.name,
+        email: u.email,
+        phone: u.phone,
+        day: parsed.day,
+        month: parsed.month,
+        year: parsed.year,
+        age,
+        isToday: parsed.month === todayMonth && parsed.day === todayDay,
+        kind: 'user',
+      })
     }
-    out.sort((a, b) => a.day - b.day || a.user.name.localeCompare(b.user.name))
+
+    for (const b of standalone) {
+      if (b.month !== selectedMonth) continue
+      // Evita duplicar quando o standalone tem o mesmo nome de um usuário já listado.
+      const dupe = out.some(
+        (e) => e.kind === 'user' && e.name.toLowerCase().trim() === b.name.toLowerCase().trim()
+      )
+      if (dupe) continue
+      const age = b.year ? computeAge(b.year, b.month, b.day, today) : undefined
+      out.push({
+        id: `b:${b.id}`,
+        name: b.name,
+        day: b.day,
+        month: b.month,
+        year: b.year,
+        age,
+        isToday: b.month === todayMonth && b.day === todayDay,
+        kind: 'standalone',
+      })
+    }
+
+    out.sort((a, b) => a.day - b.day || a.name.localeCompare(b.name))
     return out
-  }, [users, selectedMonth, today])
+  }, [users, standalone, selectedMonth, today])
 
   const usersSemAniver = useMemo(
     () => users.filter((u) => !parseBirthday(u.birthday || '')).length,
@@ -75,7 +120,7 @@ export default function AniversariantesPage() {
         <div>
           <h2 className={`text-xl font-bold ${heading}`}>Aniversariantes</h2>
           <p className={`text-sm mt-0.5 ${muted}`}>
-            {monthUsers.length} {monthUsers.length === 1 ? 'aniversariante' : 'aniversariantes'} em {MONTHS[selectedMonth - 1]}
+            {monthEntries.length} {monthEntries.length === 1 ? 'aniversariante' : 'aniversariantes'} em {MONTHS[selectedMonth - 1]}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -92,7 +137,7 @@ export default function AniversariantesPage() {
         </div>
       </div>
 
-      {monthUsers.length === 0 ? (
+      {monthEntries.length === 0 ? (
         <div className={`rounded-2xl border p-8 text-center ${panel}`}>
           <svg className={`w-12 h-12 mx-auto mb-3 ${muted}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 14h16v6a2 2 0 01-2 2H6a2 2 0 01-2-2v-6zM4 14a2 2 0 012-2h12a2 2 0 012 2M8 14V9m8 5V9M12 8c1-2 3-2 3 0s-3 3-3 3-3-1-3-3 2-2 3 0z" />
@@ -108,12 +153,11 @@ export default function AniversariantesPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {monthUsers.map((entry) => {
-            const u = entry.user
-            const waLink = u.phone ? `https://wa.me/${u.phone}` : null
+          {monthEntries.map((entry) => {
+            const waLink = entry.phone ? `https://wa.me/${entry.phone}` : null
             return (
               <div
-                key={u.id}
+                key={entry.id}
                 className={`rounded-2xl border p-4 flex gap-3 items-start transition-colors ${
                   entry.isToday
                     ? 'bg-pink-500/10 border-pink-500/50'
@@ -121,20 +165,25 @@ export default function AniversariantesPage() {
                 }`}
               >
                 <div className={`w-12 h-12 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${
-                  entry.isToday ? 'bg-pink-600 text-white' : 'bg-purple-600 text-white'
+                  entry.isToday ? 'bg-pink-600 text-white' : entry.kind === 'standalone' ? 'bg-amber-600 text-white' : 'bg-purple-600 text-white'
                 }`}>
-                  {getInitials(u.name)}
+                  {getInitials(entry.name)}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <p className={`font-semibold text-sm truncate ${heading}`}>{u.name}</p>
+                    <p className={`font-semibold text-sm truncate ${heading}`}>{entry.name}</p>
                     {entry.isToday && (
                       <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-pink-600 text-white">
                         🎉 hoje
                       </span>
                     )}
+                    {entry.kind === 'standalone' && (
+                      <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${isDark ? 'bg-amber-500/20 text-amber-300' : 'bg-amber-100 text-amber-700'}`}>
+                        contato
+                      </span>
+                    )}
                   </div>
-                  <p className={`text-xs truncate ${muted}`}>{u.email}</p>
+                  {entry.email && <p className={`text-xs truncate ${muted}`}>{entry.email}</p>}
                   <div className="mt-2 flex items-center gap-3 flex-wrap text-xs">
                     <span className={`flex items-center gap-1 ${heading}`}>
                       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -142,7 +191,7 @@ export default function AniversariantesPage() {
                       </svg>
                       {String(entry.day).padStart(2, '0')}/{String(entry.month).padStart(2, '0')}
                     </span>
-                    {entry.age >= 0 && entry.age < 130 && (
+                    {entry.age !== undefined && entry.age >= 0 && entry.age < 130 && (
                       <span className={muted}>
                         {entry.isToday ? `faz ${entry.age + (entry.age === 0 ? 1 : 0)} ano${entry.age === 0 ? '' : 's'} hoje` : `${entry.age} ano${entry.age !== 1 ? 's' : ''}`}
                       </span>
@@ -169,7 +218,7 @@ export default function AniversariantesPage() {
         </div>
       )}
 
-      {usersSemAniver > 0 && monthUsers.length > 0 && (
+      {usersSemAniver > 0 && monthEntries.length > 0 && (
         <p className={`text-xs mt-6 ${muted}`}>
           {usersSemAniver} usuário{usersSemAniver !== 1 ? 's' : ''} ainda não cadastr{usersSemAniver !== 1 ? 'aram' : 'ou'} a data de nascimento.
         </p>

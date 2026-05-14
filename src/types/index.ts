@@ -100,6 +100,15 @@ export interface Board {
   columns: Column[]
 }
 
+export interface Birthday {
+  id: string
+  name: string
+  month: number       // 1-12
+  day: number         // 1-31
+  year?: number       // opcional — quando não informado, idade não é exibida
+  createdAt: string
+}
+
 export interface Song {
   id: string
   title: string
