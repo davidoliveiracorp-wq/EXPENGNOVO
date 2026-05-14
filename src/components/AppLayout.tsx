@@ -22,7 +22,7 @@ function formatPhone(raw: string) {
 }
 
 export default function AppLayout() {
-  const { user, logout, updateProfile } = useAuth()
+  const { user, loading, logout, updateProfile } = useAuth()
   const { theme, toggleTheme } = useTheme()
   const isDark = theme === 'dark'
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -46,10 +46,12 @@ export default function AppLayout() {
   const userRef = useRef(user)
   useEffect(() => { userRef.current = user }, [user])
 
-  const pushNow = useCallback(async () => {
+  // Push interno: roda do "schedulePush" automático e só envia se houver
+  // mudanças desde o último push (localVer > lastPushed).
+  const pushNow = useCallback(async (force = false) => {
     const localVer = Number(localStorage.getItem(LOCAL_VERSION_KEY) || '0')
     const lastPushed = Number(localStorage.getItem(LAST_PUSHED_VERSION_KEY) || '0')
-    if (localVer <= lastPushed) return
+    if (!force && localVer <= lastPushed) return
     setSyncStatus('pushing')
     try {
       const payload = exportBackup()
@@ -61,7 +63,9 @@ export default function AppLayout() {
       })
       if (!res.ok) { setSyncStatus('offline'); return }
       const data = await res.json().catch(() => ({}))
-      localStorage.setItem(LAST_PUSHED_VERSION_KEY, String(localVer))
+      const newVer = force ? Math.max(localVer, 1) : localVer
+      if (force && newVer !== localVer) localStorage.setItem(LOCAL_VERSION_KEY, String(newVer))
+      localStorage.setItem(LAST_PUSHED_VERSION_KEY, String(newVer))
       if (data.updatedAt) {
         localStorage.setItem(LAST_PULLED_KEY, data.updatedAt)
         setLastSyncAt(data.updatedAt)
@@ -71,6 +75,10 @@ export default function AppLayout() {
       setSyncStatus('offline')
     }
   }, [])
+
+  // Força o envio do estado local atual, mesmo que o sistema não tenha
+  // detectado mudanças (útil para dados pré-deploy ou primeiro sync).
+  const forcePush = useCallback(() => { pushNow(true) }, [pushNow])
 
   const schedulePush = useCallback(() => {
     if (pushTimerRef.current) window.clearTimeout(pushTimerRef.current)
@@ -124,6 +132,42 @@ export default function AppLayout() {
     window.addEventListener('kb-storage-change', onChange)
     return () => window.removeEventListener('kb-storage-change', onChange)
   }, [schedulePush])
+
+  // Primeiro launch pós-deploy: se o usuário tem dados locais mas ainda não
+  // tem controle de versão (kb_local_version), envia para o servidor se ele
+  // estiver vazio. Garante que mudanças pré-deploy de qualquer usuário
+  // (mesmo não-admin) cheguem aos demais sem precisar de ação manual.
+  useEffect(() => {
+    if (loading) return
+    const hasVersion = localStorage.getItem(LOCAL_VERSION_KEY) !== null
+    if (hasVersion) return
+    let hasData = false
+    try {
+      hasData =
+        JSON.parse(localStorage.getItem('kb_boards') || '[]').length > 0 ||
+        JSON.parse(localStorage.getItem('kb_songs') || '[]').length > 0
+    } catch { /* ignore */ }
+    if (!hasData) {
+      // Sem dados, só marca inicializado para não disparar isso de novo
+      localStorage.setItem(LOCAL_VERSION_KEY, '0')
+      localStorage.setItem(LAST_PUSHED_VERSION_KEY, '0')
+      return
+    }
+    // Checa se o servidor já tem dados antes de auto-pushar
+    fetch('/api/sync', { method: 'GET', cache: 'no-store' })
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => {
+        if (data?.payload) {
+          // Servidor já tem dados — não sobrescreve; deixa o auto-pull aplicar
+          localStorage.setItem(LOCAL_VERSION_KEY, '0')
+          localStorage.setItem(LAST_PUSHED_VERSION_KEY, '0')
+          return
+        }
+        // Servidor vazio → envia o estado local automaticamente
+        forcePush()
+      })
+      .catch(() => { /* Blob não configurado, silencioso */ })
+  }, [loading, forcePush])
 
   // Pull no boot e a cada POLL_INTERVAL_MS quando a aba está visível.
   // Também faz pull ao focar a aba (volta de outra janela / outra aba).
@@ -309,38 +353,52 @@ export default function AppLayout() {
 
       {/* Bottom */}
       <div className="p-3 border-t border-white/10 space-y-0.5">
-        {/* Sync status */}
-        <div className="flex items-center gap-2 px-3 py-1.5 text-[10px] text-white/40">
-          {syncStatus === 'idle' && (
-            <>
-              <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-              <span>Sincronizado{lastSyncAt ? ` · ${formatRelativeTime(lastSyncAt)}` : ''}</span>
-            </>
-          )}
-          {syncStatus === 'pushing' && (
-            <>
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-              <span>Enviando alterações…</span>
-            </>
-          )}
-          {syncStatus === 'pulling' && (
-            <>
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-              <span>Buscando atualizações…</span>
-            </>
-          )}
-          {syncStatus === 'offline' && (
-            <>
-              <span className="w-1.5 h-1.5 rounded-full bg-yellow-500" />
-              <span title="Servidor de sincronização indisponível">Offline / sem sync</span>
-            </>
-          )}
-          {syncStatus === 'conflict' && (
-            <>
-              <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse" />
-              <span>Conflito — ver banner acima</span>
-            </>
-          )}
+        {/* Sync status + força push (visível para todos os usuários, não só admin) */}
+        <div className="px-3 py-1.5">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-[10px] text-white/40 min-w-0">
+              {syncStatus === 'idle' && (
+                <>
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 flex-shrink-0" />
+                  <span className="truncate">Sincronizado{lastSyncAt ? ` · ${formatRelativeTime(lastSyncAt)}` : ''}</span>
+                </>
+              )}
+              {syncStatus === 'pushing' && (
+                <>
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse flex-shrink-0" />
+                  <span className="truncate">Enviando alterações…</span>
+                </>
+              )}
+              {syncStatus === 'pulling' && (
+                <>
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse flex-shrink-0" />
+                  <span className="truncate">Buscando atualizações…</span>
+                </>
+              )}
+              {syncStatus === 'offline' && (
+                <>
+                  <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 flex-shrink-0" />
+                  <span className="truncate" title="Servidor de sincronização indisponível">Offline / sem sync</span>
+                </>
+              )}
+              {syncStatus === 'conflict' && (
+                <>
+                  <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse flex-shrink-0" />
+                  <span className="truncate">Conflito — ver banner acima</span>
+                </>
+              )}
+            </div>
+            <button
+              onClick={forcePush}
+              disabled={syncStatus === 'pushing' || syncStatus === 'pulling'}
+              title="Enviar minhas mudanças para o servidor agora"
+              className="text-white/40 hover:text-white transition-colors disabled:opacity-40 flex-shrink-0"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M17 8l-5-5m0 0L7 8m5-5v12" />
+              </svg>
+            </button>
+          </div>
         </div>
         {/* Theme toggle */}
         <button
