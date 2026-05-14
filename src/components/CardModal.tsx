@@ -66,14 +66,11 @@ export default function CardModal({ card, boardId, boardTitle, boardMembers, all
   // Assignee picker (description | checklist:<id>)
   const [assigneeOpen, setAssigneeOpen] = useState<string | null>(null)
 
-  // Notificação de atribuição (modal pós-ação)
-  type SendStatus = 'idle' | 'sending' | 'sent' | 'failed'
-  type AssignmentNotice = {
-    users: User[]
-    context: string
-    sendStatus: Record<string, SendStatus>  // userId -> status
-    errorMessage?: string
-  }
+  // Notificação de atribuição (modal pós-ação) — envio manual via
+  // Gmail compose / WhatsApp. O auto-send via /api/send-notification
+  // está desligado por enquanto (será reativado quando a infra de SMTP
+  // estiver configurada).
+  type AssignmentNotice = { users: User[]; context: string }
   const [assignmentNotice, setAssignmentNotice] = useState<AssignmentNotice | null>(null)
 
   // Move
@@ -132,57 +129,10 @@ export default function CardModal({ card, boardId, boardTitle, boardMembers, all
     }
   }
 
-  // Dispara o modal + auto-envia o e-mail via /api/send-notification.
+  // Abre o modal pós-atribuição para o usuário disparar a notificação
+  // manualmente via Gmail compose ou WhatsApp.
   function triggerAssignmentNotice(users: User[], context: string) {
-    const sendStatus: Record<string, SendStatus> = {}
-    for (const u of users) sendStatus[u.id] = u.email ? 'sending' : 'idle'
-    setAssignmentNotice({ users, context, sendStatus })
-
-    const boardUrl = `${window.location.origin}/boards/${boardId}`
-
-    for (const u of users) {
-      if (!u.email) continue
-      const subject = `[${boardTitle}] Você foi atribuído: ${card.title}`
-      const text =
-        `Olá, ${u.name}!\n\n` +
-        `Você foi atribuído como ${context} no cartão "${card.title}" do quadro "${boardTitle}".\n\n` +
-        `Acesse: ${boardUrl}`
-      const html =
-        `<p>Olá, <strong>${escapeHtml(u.name)}</strong>!</p>` +
-        `<p>Você foi atribuído como <strong>${escapeHtml(context)}</strong> ` +
-        `no cartão <strong>"${escapeHtml(card.title)}"</strong> ` +
-        `do quadro <strong>"${escapeHtml(boardTitle)}"</strong>.</p>` +
-        `<p><a href="${boardUrl}">Acessar o quadro</a></p>`
-
-      fetch('/api/send-notification', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to: u.email, subject, text, html }),
-      })
-        .then(async (res) => {
-          if (!res.ok) {
-            const data = await res.json().catch(() => ({}))
-            const msg = (data as { error?: string }).error || `HTTP ${res.status}`
-            setAssignmentNotice((prev) => prev && prev.users.some((x) => x.id === u.id) ? {
-              ...prev,
-              sendStatus: { ...prev.sendStatus, [u.id]: 'failed' },
-              errorMessage: prev.errorMessage || msg,
-            } : prev)
-            return
-          }
-          setAssignmentNotice((prev) => prev && prev.users.some((x) => x.id === u.id) ? {
-            ...prev,
-            sendStatus: { ...prev.sendStatus, [u.id]: 'sent' },
-          } : prev)
-        })
-        .catch((err) => {
-          setAssignmentNotice((prev) => prev && prev.users.some((x) => x.id === u.id) ? {
-            ...prev,
-            sendStatus: { ...prev.sendStatus, [u.id]: 'failed' },
-            errorMessage: prev.errorMessage || (err instanceof Error ? err.message : 'erro de rede'),
-          } : prev)
-        })
-    }
+    setAssignmentNotice({ users, context })
   }
 
   function setDescriptionAssignee(user: User | null) {
@@ -986,15 +936,8 @@ export default function CardModal({ card, boardId, boardTitle, boardMembers, all
               <p className="text-white/40 text-xs font-semibold uppercase tracking-wide mb-3">
                 Notificar atribuído{assignmentNotice.users.length > 1 ? 's' : ''}
               </p>
-              {assignmentNotice.errorMessage && (
-                <p className="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 mb-3">
-                  ⚠ Envio automático indisponível: {assignmentNotice.errorMessage}.
-                  Use os botões abaixo para notificar manualmente.
-                </p>
-              )}
               <div className="space-y-2 max-h-64 overflow-y-auto">
                 {assignmentNotice.users.map((u) => {
-                  const status = assignmentNotice.sendStatus[u.id] || 'idle'
                   const boardUrl = `${window.location.origin}/boards/${boardId}`
                   const msgText = `Olá, ${u.name}! 👋\n\nVocê foi atribuído como *${assignmentNotice.context}* no cartão *${card.title}* do quadro *${boardTitle}*.\n\n🔗 Acesse: ${boardUrl}`
                   const emailSubject = encodeURIComponent(`[${boardTitle}] Você foi atribuído: ${card.title}`)
@@ -1010,15 +953,6 @@ export default function CardModal({ card, boardId, boardTitle, boardMembers, all
                       <div className="flex-1 min-w-0">
                         <p className="text-white text-xs font-medium truncate">{u.name}</p>
                         <p className="text-white/40 text-[10px] truncate">{u.email}</p>
-                        {status === 'sending' && (
-                          <p className="text-blue-300 text-[10px] mt-0.5">Enviando e-mail…</p>
-                        )}
-                        {status === 'sent' && (
-                          <p className="text-green-400 text-[10px] mt-0.5">✓ E-mail enviado automaticamente</p>
-                        )}
-                        {status === 'failed' && (
-                          <p className="text-amber-300 text-[10px] mt-0.5">⚠ Falha no envio automático — use os botões ao lado</p>
-                        )}
                       </div>
                       <div className="flex items-center gap-1.5 flex-shrink-0">
                         <button
@@ -1057,19 +991,12 @@ export default function CardModal({ card, boardId, boardTitle, boardMembers, all
             </div>
 
             {/* Footer */}
-            <div className="px-5 py-3 border-t border-white/10 flex items-center justify-between gap-3">
-              <p className="text-white/40 text-[10px]">
-                {Object.values(assignmentNotice.sendStatus).every((s) => s === 'sent')
-                  ? '✓ Todos os e-mails foram enviados automaticamente.'
-                  : Object.values(assignmentNotice.sendStatus).some((s) => s === 'sending')
-                    ? 'Enviando notificações automáticas…'
-                    : 'Use os botões acima como fallback se o envio automático falhar.'}
-              </p>
+            <div className="px-5 py-3 border-t border-white/10 flex items-center justify-end">
               <button
                 onClick={() => setAssignmentNotice(null)}
-                className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white/70 hover:text-white rounded-xl text-xs font-medium transition-colors flex-shrink-0"
+                className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white/70 hover:text-white rounded-xl text-xs font-medium transition-colors"
               >
-                Fechar
+                Pular notificação
               </button>
             </div>
           </div>
