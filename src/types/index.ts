@@ -37,6 +37,7 @@ export interface Checklist {
   title: string
   cardId: string
   dueDate?: string    // data de vencimento da checklist (YYYY-MM-DD)
+  assignee?: User     // responsável pela checklist
   items: ChecklistItem[]
 }
 
@@ -68,6 +69,7 @@ export interface Card {
   title: string
   description?: string
   descriptionDueDate?: string  // data de vencimento da descrição (YYYY-MM-DD)
+  descriptionAssignee?: User   // responsável pela descrição
   cover?: string       // base64 da imagem de capa
   labels: Label[]
   order: number

@@ -53,6 +53,9 @@ export default function CardModal({ card, boardId, boardMembers, allUsers, colum
   // Members
   const [addingMember, setAddingMember] = useState(false)
 
+  // Assignee picker (description | checklist:<id>)
+  const [assigneeOpen, setAssigneeOpen] = useState<string | null>(null)
+
   // Move
   const [showMove, setShowMove] = useState(false)
 
@@ -100,6 +103,25 @@ export default function CardModal({ card, boardId, boardMembers, allUsers, colum
   // ── Checklist due date ────────────────────────────────────────────────────
   function setChecklistDueDate(checklistId: string, val: string) {
     sync(updateChecklist(boardId, card.id, checklistId, { dueDate: val || undefined }))
+  }
+
+  // ── Assignees (descrição e checklist) ─────────────────────────────────────
+  function ensureBoardMember(user: User) {
+    if (!boardMembers.some((m) => m.id === user.id)) {
+      addBoardMember(boardId, user)
+    }
+  }
+
+  function setDescriptionAssignee(user: User | null) {
+    if (user) ensureBoardMember(user)
+    sync(updateCard(boardId, card.id, { descriptionAssignee: user ?? undefined }))
+    setAssigneeOpen(null)
+  }
+
+  function setChecklistAssignee(checklistId: string, user: User | null) {
+    if (user) ensureBoardMember(user)
+    sync(updateChecklist(boardId, card.id, checklistId, { assignee: user ?? undefined }))
+    setAssigneeOpen(null)
   }
 
   // ── Labels ─────────────────────────────────────────────────────────────────
@@ -235,6 +257,90 @@ export default function CardModal({ card, boardId, boardMembers, allUsers, colum
   // Lista todos os cadastrados (não só membros do quadro) — ao adicionar,
   // o handleAddMember promove a board member automaticamente se necessário.
   const availableMembers = allUsers.filter((u) => !cardMemberIds.has(u.id))
+
+  function renderAssigneePicker(
+    pickerKey: string,
+    current: User | undefined,
+    onSelect: (user: User | null) => void,
+  ) {
+    const isOpen = assigneeOpen === pickerKey
+    return (
+      <div className="relative inline-flex items-center">
+        {current ? (
+          <button
+            onClick={() => setAssigneeOpen(isOpen ? null : pickerKey)}
+            title={`Responsável: ${current.name}`}
+            className={`inline-flex items-center gap-1.5 rounded-full pl-0.5 pr-2 py-0.5 text-[11px] transition-colors ${isDark ? 'bg-gray-700 hover:bg-gray-600 text-gray-200' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}
+          >
+            <span className="w-5 h-5 rounded-full bg-purple-600 flex items-center justify-center text-white text-[10px] font-bold">
+              {getInitials(current.name)}
+            </span>
+            <span className="truncate max-w-[6rem]">{current.name}</span>
+          </button>
+        ) : (
+          <button
+            onClick={() => setAssigneeOpen(isOpen ? null : pickerKey)}
+            title="Atribuir responsável"
+            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] transition-colors border border-dashed ${isDark ? 'border-gray-600 text-gray-400 hover:bg-gray-700 hover:text-gray-200' : 'border-gray-300 text-gray-500 hover:bg-gray-200 hover:text-gray-700'}`}
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+            </svg>
+            atribuir
+          </button>
+        )}
+        {isOpen && (
+          <div className={`absolute left-0 top-full mt-1 w-64 p-2 rounded-xl border z-30 shadow-2xl ${isDark ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-200'}`}>
+            <div className="flex items-center justify-between mb-1.5 px-1">
+              <p className={`text-[10px] font-semibold uppercase tracking-wide ${muted}`}>Responsável</p>
+              <button onClick={() => setAssigneeOpen(null)} className={`text-xs ${muted}`} aria-label="Fechar">✕</button>
+            </div>
+            {current && (
+              <button
+                onClick={() => onSelect(null)}
+                className={`w-full text-left px-2 py-1.5 rounded-lg text-xs flex items-center gap-2 mb-1 ${isDark ? 'hover:bg-gray-600 text-red-300' : 'hover:bg-red-50 text-red-600'}`}
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                Remover responsável
+              </button>
+            )}
+            <div className="space-y-0.5 max-h-60 overflow-y-auto">
+              {allUsers.length === 0 && (
+                <p className={`text-xs px-2 py-1 ${muted}`}>Nenhum usuário cadastrado.</p>
+              )}
+              {allUsers.map((u) => {
+                const isBoard = boardMembers.some((m) => m.id === u.id)
+                const isCurrent = current?.id === u.id
+                return (
+                  <button
+                    key={u.id}
+                    onClick={() => onSelect(u)}
+                    disabled={isCurrent}
+                    className={`w-full text-left px-2 py-1.5 rounded-lg text-xs flex items-center gap-2 ${
+                      isCurrent
+                        ? isDark ? 'bg-gray-600 text-gray-400 cursor-default' : 'bg-gray-100 text-gray-400 cursor-default'
+                        : isDark ? 'hover:bg-gray-600 text-gray-200' : 'hover:bg-gray-100 text-gray-700'
+                    }`}
+                  >
+                    <span className="w-5 h-5 rounded-full bg-purple-600 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
+                      {getInitials(u.name)}
+                    </span>
+                    <span className="flex-1 min-w-0 truncate">{u.name}</span>
+                    {isCurrent && <span className={`text-[9px] ${muted}`}>atual</span>}
+                    {!isCurrent && !isBoard && (
+                      <span className={`text-[9px] px-1 py-0.5 rounded ${isDark ? 'bg-purple-500/30 text-purple-200' : 'bg-purple-100 text-purple-700'}`}>+ quadro</span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
   const totalItems = card.checklists.reduce((s, cl) => s + cl.items.length, 0)
   const doneItems = card.checklists.reduce((s, cl) => s + cl.items.filter((i) => i.completed).length, 0)
 
@@ -419,6 +525,7 @@ export default function CardModal({ card, boardId, boardMembers, allUsers, colum
                         ✕
                       </button>
                     )}
+                    {renderAssigneePicker('description', card.descriptionAssignee, setDescriptionAssignee)}
                   </div>
                   {!editDesc && (
                     <button onClick={() => setEditDesc(true)} className={`text-xs px-2 py-0.5 rounded ${isDark ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' : 'bg-gray-200 hover:bg-gray-300 text-gray-600'}`}>
@@ -481,6 +588,7 @@ export default function CardModal({ card, boardId, boardMembers, allUsers, colum
                             ✕
                           </button>
                         )}
+                        {renderAssigneePicker(`checklist:${cl.id}`, cl.assignee, (u) => setChecklistAssignee(cl.id, u))}
                       </div>
                       <button onClick={() => handleDeleteChecklist(cl.id)} className={`text-xs px-2 py-0.5 rounded ${isDark ? 'bg-gray-700 hover:bg-gray-600 text-gray-400' : 'bg-gray-200 hover:bg-gray-300 text-gray-500'}`}>Excluir</button>
                     </div>

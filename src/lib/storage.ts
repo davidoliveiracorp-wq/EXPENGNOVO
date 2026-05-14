@@ -283,7 +283,7 @@ export function addCard(boardId: string, columnId: string, title: string, creato
   return updated
 }
 
-export function updateCard(boardId: string, cardId: string, data: Partial<Pick<Card, 'title' | 'description' | 'descriptionDueDate' | 'dueDate' | 'cover' | 'labels'>>): { board: Board; card: Card } {
+export function updateCard(boardId: string, cardId: string, data: Partial<Pick<Card, 'title' | 'description' | 'descriptionDueDate' | 'descriptionAssignee' | 'dueDate' | 'cover' | 'labels'>>): { board: Board; card: Card } {
   const board = getBoardById(boardId)!
   const old = findCard(board, cardId)!
   const card = { ...old, ...data }
@@ -396,7 +396,7 @@ export function updateChecklist(
   boardId: string,
   cardId: string,
   checklistId: string,
-  data: Partial<Pick<Checklist, 'title' | 'dueDate'>>
+  data: Partial<Pick<Checklist, 'title' | 'dueDate' | 'assignee'>>
 ): { board: Board; card: Card } {
   const board = getBoardById(boardId)!
   const old = findCard(board, cardId)!
