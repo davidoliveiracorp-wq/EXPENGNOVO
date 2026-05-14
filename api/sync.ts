@@ -13,10 +13,12 @@
 
 import { put, list, del } from '@vercel/blob'
 
-export const config = { runtime: 'edge' }
+// Roda em Node runtime (default). Edge não suporta o @vercel/blob por causa
+// das dependências internas (undici/fastify) que precisam de APIs Node.
+export const config = { runtime: 'nodejs20.x' }
 
-// Edge runtime expõe process.env (injetado pela Vercel). Declaração mínima
-// para o type-checker, sem precisar de @types/node.
+// Declaração mínima para o type-checker (process existe em runtime, mas
+// sem @types/node o TS não sabe).
 declare const process: { env: { [key: string]: string | undefined } }
 
 const BLOB_PATH = 'shared-state.json'
