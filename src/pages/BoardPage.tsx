@@ -800,6 +800,7 @@ export default function BoardPage() {
         <CardModal
           card={selectedCard}
           boardId={board.id}
+          boardTitle={board.title}
           boardMembers={boardMembers}
           allUsers={allUsers}
           columns={board.columns}

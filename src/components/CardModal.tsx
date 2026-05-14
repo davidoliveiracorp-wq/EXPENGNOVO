@@ -12,6 +12,7 @@ import { useTheme } from '../contexts/ThemeContext'
 interface Props {
   card: Card
   boardId: string
+  boardTitle: string
   boardMembers: User[]
   allUsers: User[]
   columns: Column[]
@@ -24,7 +25,7 @@ const LABEL_COLORS = [
   '#0079bf', '#00c2e0', '#51e898', '#ff78cb', '#344563',
 ]
 
-export default function CardModal({ card, boardId, boardMembers, allUsers, columns, onClose, onBoardUpdate }: Props) {
+export default function CardModal({ card, boardId, boardTitle, boardMembers, allUsers, columns, onClose, onBoardUpdate }: Props) {
   const { theme } = useTheme()
   const isDark = theme === 'dark'
 
@@ -55,6 +56,10 @@ export default function CardModal({ card, boardId, boardMembers, allUsers, colum
 
   // Assignee picker (description | checklist:<id>)
   const [assigneeOpen, setAssigneeOpen] = useState<string | null>(null)
+
+  // Notificação de atribuição (modal pós-ação)
+  type AssignmentNotice = { users: User[]; context: string }
+  const [assignmentNotice, setAssignmentNotice] = useState<AssignmentNotice | null>(null)
 
   // Move
   const [showMove, setShowMove] = useState(false)
@@ -116,12 +121,17 @@ export default function CardModal({ card, boardId, boardMembers, allUsers, colum
     if (user) ensureBoardMember(user)
     sync(updateCard(boardId, card.id, { descriptionAssignee: user ?? undefined }))
     setAssigneeOpen(null)
+    if (user) setAssignmentNotice({ users: [user], context: 'responsável pela descrição' })
   }
 
   function setChecklistAssignee(checklistId: string, user: User | null) {
     if (user) ensureBoardMember(user)
     sync(updateChecklist(boardId, card.id, checklistId, { assignee: user ?? undefined }))
     setAssigneeOpen(null)
+    if (user) {
+      const cl = card.checklists.find((c) => c.id === checklistId)
+      setAssignmentNotice({ users: [user], context: `responsável pela checklist "${cl?.title || ''}"` })
+    }
   }
 
   // ── Labels ─────────────────────────────────────────────────────────────────
@@ -203,6 +213,7 @@ export default function CardModal({ card, boardId, boardMembers, allUsers, colum
       addBoardMember(boardId, user)
     }
     sync(addCardMember(boardId, card.id, user))
+    setAssignmentNotice({ users: [user], context: 'membro do card' })
   }
 
   function handleRemoveMember(userId: string) {
@@ -872,6 +883,107 @@ export default function CardModal({ card, boardId, boardMembers, allUsers, colum
 
         </div>
       </div>
+
+      {/* ── Notificação de atribuição (post-action) ─────────────────────── */}
+      {assignmentNotice && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-[60] p-4"
+          onClick={(e) => e.target === e.currentTarget && setAssignmentNotice(null)}
+        >
+          <div className="w-full max-w-md bg-gray-900 border border-white/15 rounded-2xl shadow-2xl overflow-hidden">
+            {/* Header */}
+            <div className="px-5 py-4 border-b border-white/10">
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-purple-600">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-white font-semibold text-sm leading-snug">
+                    Atribuído: {assignmentNotice.context}
+                  </p>
+                  <p className="text-white/50 text-xs mt-0.5 truncate">"{card.title}" · {boardTitle}</p>
+                </div>
+                <button onClick={() => setAssignmentNotice(null)} className="text-white/30 hover:text-white transition-colors flex-shrink-0">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Assignees list */}
+            <div className="px-5 py-3">
+              <p className="text-white/40 text-xs font-semibold uppercase tracking-wide mb-3">
+                Notificar atribuído{assignmentNotice.users.length > 1 ? 's' : ''}
+              </p>
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {assignmentNotice.users.map((u) => {
+                  const boardUrl = `${window.location.origin}/boards/${boardId}`
+                  const msgText = `Olá, ${u.name}! 👋\n\nVocê foi atribuído como *${assignmentNotice.context}* no cartão *${card.title}* do quadro *${boardTitle}*.\n\n🔗 Acesse: ${boardUrl}`
+                  const emailSubject = encodeURIComponent(`[${boardTitle}] Você foi atribuído: ${card.title}`)
+                  const emailBody = encodeURIComponent(`Olá, ${u.name}!\n\nVocê foi atribuído como ${assignmentNotice.context} no cartão "${card.title}" do quadro "${boardTitle}".\n\nAcesse: ${boardUrl}`)
+                  const waText = encodeURIComponent(msgText)
+                  const initials = u.name.split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase()
+
+                  return (
+                    <div key={u.id} className="flex items-center gap-3 bg-white/5 rounded-xl px-3 py-2.5">
+                      <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
+                        {initials}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white text-xs font-medium truncate">{u.name}</p>
+                        <p className="text-white/40 text-[10px] truncate">{u.email}</p>
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <button
+                          title="Notificar por Email"
+                          onClick={() => window.open(
+                            `https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(u.email)}&su=${emailSubject}&body=${emailBody}`,
+                            '_blank'
+                          )}
+                          className="flex items-center gap-1 px-2 py-1 bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 hover:text-blue-300 rounded-lg text-[10px] font-medium transition-colors"
+                        >
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                          </svg>
+                          Email
+                        </button>
+                        {u.phone ? (
+                          <button
+                            title="Notificar por WhatsApp"
+                            onClick={() => window.open(`https://wa.me/${u.phone}?text=${waText}`, '_blank')}
+                            className="flex items-center gap-1 px-2 py-1 bg-green-600/20 hover:bg-green-600/40 text-green-400 hover:text-green-300 rounded-lg text-[10px] font-medium transition-colors"
+                          >
+                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
+                              <path d="M12 0C5.373 0 0 5.373 0 12c0 2.089.534 4.05 1.474 5.757L.057 23.882a.5.5 0 00.61.61l6.126-1.416A11.943 11.943 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.908 0-3.697-.503-5.244-1.382l-.376-.215-3.896.9.915-3.851-.234-.382A9.945 9.945 0 012 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/>
+                            </svg>
+                            WhatsApp
+                          </button>
+                        ) : (
+                          <span className="text-white/20 text-[10px] italic px-1">sem WhatsApp</span>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 py-3 border-t border-white/10 flex items-center justify-end">
+              <button
+                onClick={() => setAssignmentNotice(null)}
+                className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white/70 hover:text-white rounded-xl text-xs font-medium transition-colors"
+              >
+                Pular notificação
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
