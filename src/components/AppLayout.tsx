@@ -1,12 +1,16 @@
-import { useRef, useState, useEffect } from 'react'
+import { useRef, useState, useEffect, useCallback } from 'react'
 import { Outlet, NavLink } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
-import { importBackup } from '../lib/storage'
+import { exportBackup, importBackup, _setBootstrapInProgress } from '../lib/storage'
 import Logo from './Logo'
 
 const LAST_PULLED_KEY = 'kb_last_pulled_at'
+const LAST_PUSHED_VERSION_KEY = 'kb_last_pushed_version'
+const LOCAL_VERSION_KEY = 'kb_local_version'
 const DISMISSED_KEY = 'kb_dismissed_server_update'
+const POLL_INTERVAL_MS = 30000   // pull a cada 30s quando aba visível
+const PUSH_DEBOUNCE_MS = 2000    // espera 2s após última mudança para enviar
 
 function getInitials(name: string) {
   return name.split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase()
@@ -29,41 +33,138 @@ export default function AppLayout() {
   const [birthdaySaved, setBirthdaySaved] = useState(false)
   const profileRef = useRef<HTMLDivElement>(null)
 
-  // Banner de "nova versão no servidor"
+  // ── Auto-sync (push debounced + pull periódico) ──────────────────────────
+  type SyncStatus = 'idle' | 'pushing' | 'pulling' | 'offline' | 'conflict'
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle')
+  const [lastSyncAt, setLastSyncAt] = useState<string | null>(
+    () => localStorage.getItem(LAST_PULLED_KEY)
+  )
   type ServerUpdate = { updatedAt: string; updatedBy: string | null; payload: unknown }
   const [serverUpdate, setServerUpdate] = useState<ServerUpdate | null>(null)
   const [applyingUpdate, setApplyingUpdate] = useState(false)
+  const pushTimerRef = useRef<number | null>(null)
+  const userRef = useRef(user)
+  useEffect(() => { userRef.current = user }, [user])
 
-  useEffect(() => {
-    let cancelled = false
-    async function checkServerVersion() {
-      try {
-        const res = await fetch('/api/sync', { method: 'GET', cache: 'no-store' })
-        if (!res.ok || cancelled) return
-        const data = await res.json()
-        if (!data.payload || !data.updatedAt) return
-        const lastPulled = localStorage.getItem(LAST_PULLED_KEY)
-        const dismissed = localStorage.getItem(DISMISSED_KEY)
-        // Já está atualizado
-        if (lastPulled && new Date(data.updatedAt).getTime() <= new Date(lastPulled).getTime()) return
-        // Usuário pediu para ignorar essa versão específica
-        if (dismissed && dismissed === data.updatedAt) return
+  const pushNow = useCallback(async () => {
+    const localVer = Number(localStorage.getItem(LOCAL_VERSION_KEY) || '0')
+    const lastPushed = Number(localStorage.getItem(LAST_PUSHED_VERSION_KEY) || '0')
+    if (localVer <= lastPushed) return
+    setSyncStatus('pushing')
+    try {
+      const payload = exportBackup()
+      const u = userRef.current
+      const res = await fetch('/api/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payload, updatedBy: u?.name || u?.email || 'usuário' }),
+      })
+      if (!res.ok) { setSyncStatus('offline'); return }
+      const data = await res.json().catch(() => ({}))
+      localStorage.setItem(LAST_PUSHED_VERSION_KEY, String(localVer))
+      if (data.updatedAt) {
+        localStorage.setItem(LAST_PULLED_KEY, data.updatedAt)
+        setLastSyncAt(data.updatedAt)
+      }
+      setSyncStatus('idle')
+    } catch {
+      setSyncStatus('offline')
+    }
+  }, [])
+
+  const schedulePush = useCallback(() => {
+    if (pushTimerRef.current) window.clearTimeout(pushTimerRef.current)
+    pushTimerRef.current = window.setTimeout(() => { pushNow() }, PUSH_DEBOUNCE_MS)
+  }, [pushNow])
+
+  const pullNow = useCallback(async () => {
+    try {
+      setSyncStatus((s) => (s === 'pushing' ? s : 'pulling'))
+      const res = await fetch('/api/sync', { method: 'GET', cache: 'no-store' })
+      if (!res.ok) { setSyncStatus('offline'); return }
+      const data = await res.json()
+      if (!data?.payload || !data?.updatedAt) { setSyncStatus('idle'); return }
+      const lastPulled = localStorage.getItem(LAST_PULLED_KEY)
+      const isNewer = !lastPulled || new Date(data.updatedAt).getTime() > new Date(lastPulled).getTime()
+      if (!isNewer) { setSyncStatus('idle'); return }
+      // Há versão nova no servidor. Se temos mudanças locais ainda não
+      // enviadas, mostra banner para o usuário decidir; caso contrário,
+      // aplica silenciosamente.
+      const localVer = Number(localStorage.getItem(LOCAL_VERSION_KEY) || '0')
+      const lastPushed = Number(localStorage.getItem(LAST_PUSHED_VERSION_KEY) || '0')
+      if (localVer > lastPushed) {
         setServerUpdate({ updatedAt: data.updatedAt, updatedBy: data.updatedBy, payload: data.payload })
-      } catch {
-        /* Vercel Blob não configurado ou rede off — silencioso */
+        setSyncStatus('conflict')
+        return
+      }
+      // Aplica silenciosamente (sem reload se nada estiver em edição)
+      _setBootstrapInProgress(true)
+      try {
+        importBackup(data.payload, 'merge')
+      } finally {
+        _setBootstrapInProgress(false)
+      }
+      localStorage.setItem(LAST_PULLED_KEY, data.updatedAt)
+      setLastSyncAt(data.updatedAt)
+      setSyncStatus('idle')
+      // Recarrega para refletir as mudanças (a UI lê do localStorage)
+      // sem perder o que o usuário não estava editando ativamente.
+      const activeTag = (document.activeElement?.tagName || '').toLowerCase()
+      const isTyping = activeTag === 'input' || activeTag === 'textarea'
+      if (!isTyping) window.location.reload()
+      else setServerUpdate({ updatedAt: data.updatedAt, updatedBy: data.updatedBy, payload: data.payload })
+    } catch {
+      setSyncStatus('offline')
+    }
+  }, [])
+
+  // Listener: dispara push debounced sempre que storage avisa de mudança local
+  useEffect(() => {
+    const onChange = () => schedulePush()
+    window.addEventListener('kb-storage-change', onChange)
+    return () => window.removeEventListener('kb-storage-change', onChange)
+  }, [schedulePush])
+
+  // Pull no boot e a cada POLL_INTERVAL_MS quando a aba está visível.
+  // Também faz pull ao focar a aba (volta de outra janela / outra aba).
+  useEffect(() => {
+    let interval: number | null = null
+    function start() {
+      pullNow()
+      if (interval == null) {
+        interval = window.setInterval(() => {
+          if (document.visibilityState === 'visible') pullNow()
+        }, POLL_INTERVAL_MS)
       }
     }
-    checkServerVersion()
-    return () => { cancelled = true }
-  }, [])
+    function stop() {
+      if (interval != null) { window.clearInterval(interval); interval = null }
+    }
+    function onVisibility() {
+      if (document.visibilityState === 'visible') { pullNow(); start() } else stop()
+    }
+    function onFocus() { pullNow() }
+    start()
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('focus', onFocus)
+    return () => {
+      stop()
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('focus', onFocus)
+    }
+  }, [pullNow])
 
   async function handleApplyServerUpdate() {
     if (!serverUpdate) return
     setApplyingUpdate(true)
     try {
-      importBackup(serverUpdate.payload, 'merge')
+      _setBootstrapInProgress(true)
+      try {
+        importBackup(serverUpdate.payload, 'merge')
+      } finally {
+        _setBootstrapInProgress(false)
+      }
       localStorage.setItem(LAST_PULLED_KEY, serverUpdate.updatedAt)
-      // Recarrega para refletir os novos dados em todas as telas
       window.location.reload()
     } catch (e) {
       console.error('Falha ao aplicar atualização do servidor', e)
@@ -75,6 +176,7 @@ export default function AppLayout() {
     if (!serverUpdate) return
     localStorage.setItem(DISMISSED_KEY, serverUpdate.updatedAt)
     setServerUpdate(null)
+    setSyncStatus('idle')
   }
 
   function formatRelativeTime(iso: string): string {
@@ -207,6 +309,39 @@ export default function AppLayout() {
 
       {/* Bottom */}
       <div className="p-3 border-t border-white/10 space-y-0.5">
+        {/* Sync status */}
+        <div className="flex items-center gap-2 px-3 py-1.5 text-[10px] text-white/40">
+          {syncStatus === 'idle' && (
+            <>
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+              <span>Sincronizado{lastSyncAt ? ` · ${formatRelativeTime(lastSyncAt)}` : ''}</span>
+            </>
+          )}
+          {syncStatus === 'pushing' && (
+            <>
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+              <span>Enviando alterações…</span>
+            </>
+          )}
+          {syncStatus === 'pulling' && (
+            <>
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+              <span>Buscando atualizações…</span>
+            </>
+          )}
+          {syncStatus === 'offline' && (
+            <>
+              <span className="w-1.5 h-1.5 rounded-full bg-yellow-500" />
+              <span title="Servidor de sincronização indisponível">Offline / sem sync</span>
+            </>
+          )}
+          {syncStatus === 'conflict' && (
+            <>
+              <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse" />
+              <span>Conflito — ver banner acima</span>
+            </>
+          )}
+        </div>
         {/* Theme toggle */}
         <button
           onClick={toggleTheme}

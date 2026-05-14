@@ -38,6 +38,41 @@ function get<T>(key: string): T[] {
 }
 function set<T>(key: string, data: T[]): void {
   localStorage.setItem(key, JSON.stringify(data))
+  notifyLocalChange(key)
+}
+
+// ── Sync tracking ─────────────────────────────────────────────────────────────
+//
+// Sinaliza para o auto-sync (em AppLayout) que houve uma mudança local em
+// chaves "de dados". Sentinelas de sessão/sync (kb_session, kb_local_*) e
+// preferências locais (kb_theme, kb_wa_contact) NÃO são consideradas "dados"
+// e por isso não geram push automático.
+
+const SYNC_SENTINEL_KEYS = new Set<string>([
+  'kb_session',
+  'kb_theme',
+  'kb_wa_contact',
+  'kb_local_version',
+  'kb_last_change_at',
+  'kb_last_pushed_version',
+  'kb_last_pulled_at',
+  'kb_dismissed_server_update',
+])
+
+// Quando true (durante boot/importBackup), mudanças NÃO bumpam a versão
+// local — para não disparar push automático com estado de bootstrap.
+let _bootstrapInProgress = false
+export function _setBootstrapInProgress(on: boolean): void {
+  _bootstrapInProgress = on
+}
+
+function notifyLocalChange(key: string): void {
+  if (_bootstrapInProgress) return
+  if (!key.startsWith('kb_') || SYNC_SENTINEL_KEYS.has(key)) return
+  const v = Number(localStorage.getItem('kb_local_version') || '0') + 1
+  localStorage.setItem('kb_local_version', String(v))
+  localStorage.setItem('kb_last_change_at', String(Date.now()))
+  try { window.dispatchEvent(new Event('kb-storage-change')) } catch { /* no-op SSR */ }
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────

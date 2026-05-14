@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
-import { authLogin, authLogout, authRegister, authGetCurrentUser, updateUserProfile, ensureSuperAdmin, ensureSeedLoaded, ensureBoardGuests, ensureBirthdays } from '../lib/storage'
+import { authLogin, authLogout, authRegister, authGetCurrentUser, updateUserProfile, ensureSuperAdmin, ensureSeedLoaded, ensureBoardGuests, ensureBirthdays, _setBootstrapInProgress } from '../lib/storage'
 import { User } from '../types'
 
 interface AuthContextType {
@@ -19,13 +19,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     (async () => {
+      // Suprime bumps de versão local durante a fase de bootstrap, para que
+      // ensureSuperAdmin/ensureBoardGuests/ensureBirthdays não disparem
+      // pushes automáticos com estado de "primeiro boot deste navegador".
+      _setBootstrapInProgress(true)
       try {
-        const seed = await ensureSeedLoaded()
-        if (seed.loaded) console.log('Seed inicial carregado em navegador zerado')
-      } catch (e) { console.error('ensureSeedLoaded failed', e) }
-      try { await ensureSuperAdmin() } catch (e) { console.error('ensureSuperAdmin failed', e) }
-      try { await ensureBoardGuests() } catch (e) { console.error('ensureBoardGuests failed', e) }
-      try { await ensureBirthdays() } catch (e) { console.error('ensureBirthdays failed', e) }
+        try {
+          const seed = await ensureSeedLoaded()
+          if (seed.loaded) console.log('Seed inicial carregado em navegador zerado')
+        } catch (e) { console.error('ensureSeedLoaded failed', e) }
+        try { await ensureSuperAdmin() } catch (e) { console.error('ensureSuperAdmin failed', e) }
+        try { await ensureBoardGuests() } catch (e) { console.error('ensureBoardGuests failed', e) }
+        try { await ensureBirthdays() } catch (e) { console.error('ensureBirthdays failed', e) }
+      } finally {
+        _setBootstrapInProgress(false)
+      }
       setUser(authGetCurrentUser())
       setLoading(false)
     })()
