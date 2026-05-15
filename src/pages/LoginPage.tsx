@@ -1,7 +1,8 @@
-import { useState, FormEvent } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useState, useEffect, FormEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
+import { importBackup, ensurePasswordOverrides, _setBootstrapInProgress } from '../lib/storage'
 import Logo from '../components/Logo'
 
 export default function LoginPage() {
@@ -13,6 +14,32 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
+  // ── Sincronização ao abrir a página ────────────────────────────────────────
+  // Puxa a versão mais recente do servidor antes de qualquer tentativa de
+  // login. Garante que mudanças de senha feitas em outro navegador (via
+  // /api/forgot-password) cheguem aqui antes de o usuário tentar entrar.
+  const [pulling, setPulling] = useState(true)
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch('/api/sync', { method: 'GET', cache: 'no-store' })
+        if (res.ok) {
+          const data = await res.json()
+          if (data?.payload && !cancelled) {
+            _setBootstrapInProgress(true)
+            try { importBackup(data.payload, 'merge') } finally { _setBootstrapInProgress(false) }
+          }
+        }
+      } catch { /* sem rede ou Blob não configurado — segue local */ }
+      // Reaplica os PASSWORD_OVERRIDES (admin pode ter forçado uma senha)
+      try { await ensurePasswordOverrides() } catch { /* ignore */ }
+      if (!cancelled) setPulling(false)
+    })()
+    return () => { cancelled = true }
+  }, [])
+
+  // ── Login ──────────────────────────────────────────────────────────────────
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError('')
@@ -24,6 +51,45 @@ export default function LoginPage() {
       setError(err instanceof Error ? err.message : 'Erro ao fazer login')
     } finally {
       setLoading(false)
+    }
+  }
+
+  // ── Esqueci a senha ────────────────────────────────────────────────────────
+  const [showForgot, setShowForgot] = useState(false)
+  const [forgotEmail, setForgotEmail] = useState('')
+  const [forgotBusy, setForgotBusy] = useState(false)
+  const [forgotMsg, setForgotMsg] = useState<{ kind: 'ok' | 'err' | 'info'; text: string; tempPassword?: string } | null>(null)
+
+  async function handleForgot(e: FormEvent) {
+    e.preventDefault()
+    setForgotMsg(null)
+    setForgotBusy(true)
+    try {
+      const res = await fetch('/api/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: forgotEmail.trim() }),
+      })
+      const data = await res.json().catch(() => ({} as Record<string, unknown>))
+      if (!res.ok) {
+        const msg = (data as { error?: string }).error || `HTTP ${res.status}`
+        setForgotMsg({ kind: 'err', text: msg })
+      } else if ((data as { tempPassword?: string }).tempPassword) {
+        setForgotMsg({
+          kind: 'info',
+          text: (data as { message?: string }).message || 'Senha temporária gerada.',
+          tempPassword: (data as { tempPassword?: string }).tempPassword,
+        })
+      } else {
+        setForgotMsg({
+          kind: 'ok',
+          text: (data as { message?: string }).message || 'Nova senha enviada para o e-mail cadastrado.',
+        })
+      }
+    } catch (err) {
+      setForgotMsg({ kind: 'err', text: err instanceof Error ? err.message : 'Erro de rede.' })
+    } finally {
+      setForgotBusy(false)
     }
   }
 
@@ -60,48 +126,111 @@ export default function LoginPage() {
             <div className="inline-flex items-center justify-center px-4 py-2 bg-black rounded-2xl mb-4">
               <Logo size="md" />
             </div>
-            <p className={`mt-2 text-sm ${isDark ? 'text-white/60' : 'text-gray-500'}`}>Entre na sua conta</p>
+            <p className={`mt-2 text-sm ${isDark ? 'text-white/60' : 'text-gray-500'}`}>
+              {showForgot ? 'Recuperar senha' : 'Entre na sua conta'}
+            </p>
+            {pulling && !showForgot && (
+              <p className={`mt-1 text-[10px] ${isDark ? 'text-white/40' : 'text-gray-400'}`}>
+                Buscando atualizações do servidor…
+              </p>
+            )}
           </div>
 
-          {error && (
-            <div className="mb-4 p-3 bg-red-500/20 border border-red-400/40 rounded-lg text-red-500 text-sm">{error}</div>
+          {!showForgot ? (
+            <>
+              {error && (
+                <div className="mb-4 p-3 bg-red-500/20 border border-red-400/40 rounded-lg text-red-500 text-sm">{error}</div>
+              )}
+
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                  <label className={`block text-sm font-medium mb-1 ${isDark ? 'text-white/80' : 'text-gray-700'}`}>Email</label>
+                  <input
+                    type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                    className={`w-full px-4 py-3 rounded-xl focus:outline-none focus:ring-2 transition-colors ${
+                      isDark ? 'bg-white/10 border border-white/20 text-white placeholder-white/40 focus:ring-white/40'
+                             : 'bg-gray-50 border border-gray-300 text-gray-900 placeholder-gray-400 focus:ring-purple-400'
+                    }`}
+                    placeholder="seu@email.com" required
+                  />
+                </div>
+                <div>
+                  <label className={`block text-sm font-medium mb-1 ${isDark ? 'text-white/80' : 'text-gray-700'}`}>Senha</label>
+                  <input
+                    type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+                    className={`w-full px-4 py-3 rounded-xl focus:outline-none focus:ring-2 transition-colors ${
+                      isDark ? 'bg-white/10 border border-white/20 text-white placeholder-white/40 focus:ring-white/40'
+                             : 'bg-gray-50 border border-gray-300 text-gray-900 placeholder-gray-400 focus:ring-purple-400'
+                    }`}
+                    placeholder="••••••••" required
+                  />
+                </div>
+                <button type="submit" disabled={loading || pulling}
+                  className="w-full py-3 bg-black text-white font-semibold rounded-xl hover:bg-gray-800 transition-colors disabled:opacity-60">
+                  {loading ? 'Entrando...' : pulling ? 'Aguarde…' : 'Entrar'}
+                </button>
+              </form>
+
+              <p className={`text-center text-sm mt-6 ${isDark ? 'text-white/60' : 'text-gray-500'}`}>
+                <button
+                  type="button"
+                  onClick={() => { setShowForgot(true); setForgotEmail(email); setForgotMsg(null); setError('') }}
+                  className={`font-medium hover:underline ${isDark ? 'text-white' : 'text-purple-700'}`}
+                >
+                  Esqueci a senha
+                </button>
+              </p>
+            </>
+          ) : (
+            <>
+              <form onSubmit={handleForgot} className="space-y-4">
+                <p className={`text-sm ${isDark ? 'text-white/70' : 'text-gray-600'}`}>
+                  Informe o e-mail cadastrado. Enviaremos uma nova senha para você.
+                </p>
+                <div>
+                  <label className={`block text-sm font-medium mb-1 ${isDark ? 'text-white/80' : 'text-gray-700'}`}>Email cadastrado</label>
+                  <input
+                    type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)}
+                    className={`w-full px-4 py-3 rounded-xl focus:outline-none focus:ring-2 transition-colors ${
+                      isDark ? 'bg-white/10 border border-white/20 text-white placeholder-white/40 focus:ring-white/40'
+                             : 'bg-gray-50 border border-gray-300 text-gray-900 placeholder-gray-400 focus:ring-purple-400'
+                    }`}
+                    placeholder="seu@email.com" required autoFocus
+                  />
+                </div>
+
+                {forgotMsg && (
+                  <div className={`p-3 rounded-lg text-sm ${
+                    forgotMsg.kind === 'ok' ? 'bg-green-500/20 border border-green-400/40 text-green-300'
+                    : forgotMsg.kind === 'err' ? 'bg-red-500/20 border border-red-400/40 text-red-400'
+                    : 'bg-blue-500/20 border border-blue-400/40 text-blue-300'
+                  }`}>
+                    <p>{forgotMsg.text}</p>
+                    {forgotMsg.tempPassword && (
+                      <p className="mt-2 font-mono text-base bg-black/30 px-2 py-1 rounded inline-block">
+                        {forgotMsg.tempPassword}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                <button type="submit" disabled={forgotBusy}
+                  className="w-full py-3 bg-black text-white font-semibold rounded-xl hover:bg-gray-800 transition-colors disabled:opacity-60">
+                  {forgotBusy ? 'Enviando…' : 'Enviar nova senha'}
+                </button>
+              </form>
+
+              <p className={`text-center text-sm mt-6 ${isDark ? 'text-white/60' : 'text-gray-500'}`}>
+                <button
+                  type="button"
+                  onClick={() => { setShowForgot(false); setForgotMsg(null); setForgotEmail('') }}
+                  className={`font-medium hover:underline ${isDark ? 'text-white' : 'text-purple-700'}`}
+                >
+                  ← Voltar ao login
+                </button>
+              </p>
+            </>
           )}
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className={`block text-sm font-medium mb-1 ${isDark ? 'text-white/80' : 'text-gray-700'}`}>Email</label>
-              <input
-                type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-                className={`w-full px-4 py-3 rounded-xl focus:outline-none focus:ring-2 transition-colors ${
-                  isDark ? 'bg-white/10 border border-white/20 text-white placeholder-white/40 focus:ring-white/40'
-                         : 'bg-gray-50 border border-gray-300 text-gray-900 placeholder-gray-400 focus:ring-purple-400'
-                }`}
-                placeholder="seu@email.com" required
-              />
-            </div>
-            <div>
-              <label className={`block text-sm font-medium mb-1 ${isDark ? 'text-white/80' : 'text-gray-700'}`}>Senha</label>
-              <input
-                type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-                className={`w-full px-4 py-3 rounded-xl focus:outline-none focus:ring-2 transition-colors ${
-                  isDark ? 'bg-white/10 border border-white/20 text-white placeholder-white/40 focus:ring-white/40'
-                         : 'bg-gray-50 border border-gray-300 text-gray-900 placeholder-gray-400 focus:ring-purple-400'
-                }`}
-                placeholder="••••••••" required
-              />
-            </div>
-            <button type="submit" disabled={loading}
-              className="w-full py-3 bg-black text-white font-semibold rounded-xl hover:bg-gray-800 transition-colors disabled:opacity-60">
-              {loading ? 'Entrando...' : 'Entrar'}
-            </button>
-          </form>
-
-          <p className={`text-center text-sm mt-6 ${isDark ? 'text-white/60' : 'text-gray-500'}`}>
-            Não tem conta?{' '}
-            <Link to="/register" className={`font-medium hover:underline ${isDark ? 'text-white' : 'text-purple-700'}`}>
-              Cadastre-se
-            </Link>
-          </p>
         </div>
       </div>
     </div>

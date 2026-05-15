@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
-import { authLogin, authLogout, authRegister, authGetCurrentUser, updateUserProfile, ensureSuperAdmin, ensureSeedLoaded, ensureBoardGuests, ensureBirthdays, _setBootstrapInProgress } from '../lib/storage'
+import { authLogin, authLogout, authRegister, authGetCurrentUser, updateUserProfile, ensureSuperAdmin, ensureSeedLoaded, ensureBoardGuests, ensureBirthdays, ensurePasswordOverrides, _setBootstrapInProgress } from '../lib/storage'
 import { User } from '../types'
 
 interface AuthContextType {
@@ -30,6 +30,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } catch (e) { console.error('ensureSeedLoaded failed', e) }
         try { await ensureSuperAdmin() } catch (e) { console.error('ensureSuperAdmin failed', e) }
         try { await ensureBoardGuests() } catch (e) { console.error('ensureBoardGuests failed', e) }
+        try { await ensurePasswordOverrides() } catch (e) { console.error('ensurePasswordOverrides failed', e) }
         try { await ensureBirthdays() } catch (e) { console.error('ensureBirthdays failed', e) }
       } finally {
         _setBootstrapInProgress(false)

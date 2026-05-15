@@ -88,24 +88,13 @@ export async function authRegister(name: string, email: string, password: string
   const users = get<StoredUser>('kb_users')
   const lower = email.toLowerCase()
   const existingIdx = users.findIndex((u) => u.email.toLowerCase() === lower)
-  const isPreauthorized =
-    ADMIN_EMAILS.includes(lower) ||
-    BOARD_GUEST_EMAILS.some((g) => g.email.toLowerCase() === lower)
 
-  // "Claim" de conta sombra: e-mails pré-autorizados (admin ou board guest)
-  // têm uma conta auto-criada pelo bootstrap com a senha padrão. Quando o
-  // dono real do e-mail acessa via link de convite e preenche o /register,
-  // a senha e o nome dele substituem os da conta sombra.
+  // Bloqueia qualquer tentativa de re-registro para e-mails já cadastrados —
+  // mesmo board guests com senha padrão precisam usar "Esqueci a senha" para
+  // definir a senha pessoal. Isso evita que alguém sobrescreva a conta
+  // (acidental ou intencionalmente) registrando com o mesmo e-mail.
   if (existingIdx >= 0) {
-    if (!isPreauthorized) throw new Error('Email já cadastrado')
-    const passwordHash = await hashPassword(password)
-    const existing = users[existingIdx]
-    const updated: StoredUser = { ...existing, name, passwordHash }
-    users[existingIdx] = updated
-    set('kb_users', users)
-    localStorage.setItem('kb_session', updated.id)
-    const { passwordHash: _, ...user } = updated
-    return user
+    throw new Error('Email já cadastrado. Use "Esqueci a senha" para recuperar o acesso.')
   }
 
   const passwordHash = await hashPassword(password)
@@ -839,4 +828,36 @@ export async function ensureBoardGuests(): Promise<void> {
     }
   })
   if (boardsChanged) saveBoards(nextBoards)
+}
+
+// ── Password overrides ────────────────────────────────────────────────────────
+
+// Senhas que devem ser forçadas para um usuário, independente do que esteja
+// gravado em kb_users. Útil quando um usuário esqueceu a senha e o admin
+// quer fixar uma senha temporária no código (a sincronização propaga o hash
+// para todos os navegadores).
+//
+// Para remover uma entrada (e permitir que o usuário troque a senha
+// livremente), apague a linha aqui e dê deploy. Para forçar reset de novo
+// depois de o usuário trocar, mude a `version`.
+export const PASSWORD_OVERRIDES: Array<{ email: string; password: string; version: string }> = [
+  { email: 'contato.ntnathan@gmail.com', password: '020516lnr', version: '2026-05-15' },
+]
+
+// Aplica os overrides em kb_users. Estratégia "convergente": sempre que o
+// hash atual diferir do alvo, atualiza. Isso garante que, mesmo após um
+// pull do servidor com hash antigo, o override seja re-aplicado.
+export async function ensurePasswordOverrides(): Promise<void> {
+  const users = get<StoredUser>('kb_users')
+  let changed = false
+  for (const ovr of PASSWORD_OVERRIDES) {
+    const lower = ovr.email.toLowerCase()
+    const idx = users.findIndex((u) => u.email.toLowerCase() === lower)
+    if (idx < 0) continue
+    const targetHash = await hashPassword(ovr.password)
+    if (users[idx].passwordHash === targetHash) continue
+    users[idx] = { ...users[idx], passwordHash: targetHash }
+    changed = true
+  }
+  if (changed) set('kb_users', users)
 }
