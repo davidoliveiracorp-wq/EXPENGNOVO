@@ -14,16 +14,21 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  // ── Sincronização ao abrir a página ────────────────────────────────────────
-  // Puxa a versão mais recente do servidor antes de qualquer tentativa de
-  // login. Garante que mudanças de senha feitas em outro navegador (via
-  // /api/forgot-password) cheguem aqui antes de o usuário tentar entrar.
-  const [pulling, setPulling] = useState(true)
+  // ── Sincronização ao abrir a página (não-bloqueante) ──────────────────────
+  // Puxa em background a versão mais recente do servidor para que mudanças
+  // de senha vindas de outro navegador (via /api/forgot-password) cheguem
+  // aqui. Não bloqueia o login — se o servidor demorar/falhar, o usuário
+  // ainda pode entrar com o estado local imediatamente.
   useEffect(() => {
     let cancelled = false
+    const ctrl = new AbortController()
+    // Timeout de 4s para não bloquear caso o servidor não responda
+    // (Blob não configurado, rede off, etc).
+    const timer = setTimeout(() => ctrl.abort(), 4000)
+
     ;(async () => {
       try {
-        const res = await fetch('/api/sync', { method: 'GET', cache: 'no-store' })
+        const res = await fetch('/api/sync', { method: 'GET', cache: 'no-store', signal: ctrl.signal })
         if (res.ok) {
           const data = await res.json()
           if (data?.payload && !cancelled) {
@@ -31,12 +36,12 @@ export default function LoginPage() {
             try { importBackup(data.payload, 'merge') } finally { _setBootstrapInProgress(false) }
           }
         }
-      } catch { /* sem rede ou Blob não configurado — segue local */ }
-      // Reaplica os PASSWORD_OVERRIDES (admin pode ter forçado uma senha)
+      } catch { /* abort/sem rede/Blob não configurado — segue local */ }
+      finally { clearTimeout(timer) }
       try { await ensurePasswordOverrides() } catch { /* ignore */ }
-      if (!cancelled) setPulling(false)
     })()
-    return () => { cancelled = true }
+
+    return () => { cancelled = true; clearTimeout(timer); ctrl.abort() }
   }, [])
 
   // ── Login ──────────────────────────────────────────────────────────────────
@@ -148,11 +153,6 @@ export default function LoginPage() {
             <p className={`mt-2 text-sm ${isDark ? 'text-white/60' : 'text-gray-500'}`}>
               {showForgot ? 'Recuperar senha' : 'Entre na sua conta'}
             </p>
-            {pulling && !showForgot && (
-              <p className={`mt-1 text-[10px] ${isDark ? 'text-white/40' : 'text-gray-400'}`}>
-                Buscando atualizações do servidor…
-              </p>
-            )}
           </div>
 
           {!showForgot ? (
@@ -184,9 +184,9 @@ export default function LoginPage() {
                     placeholder="••••••••" required
                   />
                 </div>
-                <button type="submit" disabled={loading || pulling}
+                <button type="submit" disabled={loading}
                   className="w-full py-3 bg-black text-white font-semibold rounded-xl hover:bg-gray-800 transition-colors disabled:opacity-60">
-                  {loading ? 'Entrando...' : pulling ? 'Aguarde…' : 'Entrar'}
+                  {loading ? 'Entrando...' : 'Entrar'}
                 </button>
               </form>
 
