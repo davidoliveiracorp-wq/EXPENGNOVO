@@ -2,7 +2,7 @@ import { useRef, useState, useEffect, useCallback } from 'react'
 import { Outlet, NavLink } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
-import { exportBackup, importBackup, _setBootstrapInProgress } from '../lib/storage'
+import { exportBackup, importBackup, changeMyPassword, _setBootstrapInProgress } from '../lib/storage'
 import Logo from './Logo'
 
 const LAST_PULLED_KEY = 'kb_last_pulled_at'
@@ -31,6 +31,13 @@ export default function AppLayout() {
   const [phoneSaved, setPhoneSaved] = useState(false)
   const [birthdayInput, setBirthdayInput] = useState('')
   const [birthdaySaved, setBirthdaySaved] = useState(false)
+  // Trocar senha
+  const [showChangePwd, setShowChangePwd] = useState(false)
+  const [pwdCurrent, setPwdCurrent] = useState('')
+  const [pwdNew, setPwdNew] = useState('')
+  const [pwdConfirm, setPwdConfirm] = useState('')
+  const [pwdBusy, setPwdBusy] = useState(false)
+  const [pwdMsg, setPwdMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
   const profileRef = useRef<HTMLDivElement>(null)
 
   // ── Auto-sync (push debounced + pull periódico) ──────────────────────────
@@ -263,6 +270,29 @@ export default function AppLayout() {
     setTimeout(() => setBirthdaySaved(false), 2000)
   }
 
+  async function handleChangePassword() {
+    if (!user) return
+    setPwdMsg(null)
+    if (pwdNew !== pwdConfirm) {
+      setPwdMsg({ kind: 'err', text: 'A confirmação não bate com a nova senha.' })
+      return
+    }
+    setPwdBusy(true)
+    try {
+      await changeMyPassword(user.id, pwdCurrent, pwdNew)
+      setPwdMsg({ kind: 'ok', text: 'Senha alterada com sucesso!' })
+      setPwdCurrent(''); setPwdNew(''); setPwdConfirm('')
+      setTimeout(() => {
+        setShowChangePwd(false)
+        setPwdMsg(null)
+      }, 1800)
+    } catch (e) {
+      setPwdMsg({ kind: 'err', text: e instanceof Error ? e.message : 'Falha ao trocar senha.' })
+    } finally {
+      setPwdBusy(false)
+    }
+  }
+
   const navItems = [
     {
       to: '/',
@@ -483,6 +513,62 @@ export default function AppLayout() {
                     {birthdaySaved ? '✓' : 'Salvar'}
                   </button>
                 </div>
+              </div>
+
+              {/* Trocar senha */}
+              <div className="mt-3 pt-3 border-t border-white/10">
+                {!showChangePwd ? (
+                  <button
+                    onClick={() => { setShowChangePwd(true); setPwdMsg(null) }}
+                    className="w-full text-left flex items-center gap-2 text-white/60 hover:text-white text-xs py-1.5"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                    </svg>
+                    Trocar minha senha
+                  </button>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-white/50 text-xs font-medium">Trocar senha</p>
+                    <input
+                      type="password" autoComplete="current-password"
+                      value={pwdCurrent} onChange={(e) => setPwdCurrent(e.target.value)}
+                      placeholder="Senha atual"
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/30 text-xs focus:outline-none focus:ring-1 focus:ring-white/40"
+                    />
+                    <input
+                      type="password" autoComplete="new-password"
+                      value={pwdNew} onChange={(e) => setPwdNew(e.target.value)}
+                      placeholder="Nova senha (mín. 6 caracteres)"
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/30 text-xs focus:outline-none focus:ring-1 focus:ring-white/40"
+                    />
+                    <input
+                      type="password" autoComplete="new-password"
+                      value={pwdConfirm} onChange={(e) => setPwdConfirm(e.target.value)}
+                      placeholder="Confirmar nova senha"
+                      onKeyDown={(e) => e.key === 'Enter' && handleChangePassword()}
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/30 text-xs focus:outline-none focus:ring-1 focus:ring-white/40"
+                    />
+                    {pwdMsg && (
+                      <p className={`text-[10px] ${pwdMsg.kind === 'ok' ? 'text-green-400' : 'text-red-400'}`}>{pwdMsg.text}</p>
+                    )}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleChangePassword}
+                        disabled={pwdBusy || !pwdCurrent || !pwdNew}
+                        className="flex-1 px-2.5 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-medium transition-colors"
+                      >
+                        {pwdBusy ? 'Salvando…' : 'Salvar nova senha'}
+                      </button>
+                      <button
+                        onClick={() => { setShowChangePwd(false); setPwdMsg(null); setPwdCurrent(''); setPwdNew(''); setPwdConfirm('') }}
+                        className="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/60 text-xs transition-colors"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}

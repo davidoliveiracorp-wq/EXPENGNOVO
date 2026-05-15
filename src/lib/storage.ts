@@ -154,6 +154,27 @@ export function updateUserProfile(userId: string, data: { phone?: string; name?:
   return user
 }
 
+// Troca a própria senha. Requer informar a senha atual. Auto-sync propaga
+// o novo hash para os outros dispositivos.
+export async function changeMyPassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
+  if (!newPassword || newPassword.length < 6) {
+    throw new Error('A nova senha precisa ter ao menos 6 caracteres.')
+  }
+  const users = get<StoredUser>('kb_users')
+  const idx = users.findIndex((u) => u.id === userId)
+  if (idx < 0) throw new Error('Usuário não encontrado neste navegador.')
+  const currentHash = await hashPassword(currentPassword)
+  if (users[idx].passwordHash !== currentHash) {
+    throw new Error('Senha atual incorreta.')
+  }
+  const newHash = await hashPassword(newPassword)
+  if (newHash === currentHash) {
+    throw new Error('A nova senha precisa ser diferente da atual.')
+  }
+  users[idx] = { ...users[idx], passwordHash: newHash }
+  set('kb_users', users)
+}
+
 export function findUserByEmail(email: string): User | null {
   const stored = get<StoredUser>('kb_users').find((u) => u.email.toLowerCase() === email.toLowerCase().trim())
   if (!stored) return null
