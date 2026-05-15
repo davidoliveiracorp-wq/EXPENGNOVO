@@ -13,9 +13,10 @@
 
 import { put, list, del } from '@vercel/blob'
 
-// Roda em Node runtime (default, sem export const config). Edge não
-// suporta o @vercel/blob por causa das dependências internas
-// (undici/fastify) que precisam de APIs Node.
+// Roda em Edge runtime — Vercel só suporta handler Web Standard
+// (Request -> Response) em Edge functions. @vercel/blob 1.x suporta
+// Edge (a versão 0.27.x antiga tinha o problema de undici).
+export const config = { runtime: 'edge' }
 
 // Declaração mínima para o type-checker (process existe em runtime, mas
 // sem @types/node o TS não sabe).

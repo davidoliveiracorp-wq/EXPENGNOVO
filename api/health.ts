@@ -2,6 +2,8 @@
 // Usar para confirmar que serverless functions estão saudáveis e que as
 // env vars estão disponíveis.
 
+export const config = { runtime: 'edge' }
+
 declare const process: { env: { [key: string]: string | undefined } }
 
 export default async function handler(_req: Request): Promise<Response> {
