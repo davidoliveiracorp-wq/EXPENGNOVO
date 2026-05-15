@@ -30,6 +30,15 @@ function json(body: unknown, status = 200): Response {
   })
 }
 
+// Garante que uma Promise resolva em até `ms`. Se demorar mais, lança erro
+// claro em vez de deixar a função inteira estourar o timeout do Vercel.
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`Timeout ${label} após ${ms}ms`)), ms)
+    promise.then((v) => { clearTimeout(t); resolve(v) }, (e) => { clearTimeout(t); reject(e) })
+  })
+}
+
 export default async function handler(req: Request): Promise<Response> {
   const token = process.env.BLOB_READ_WRITE_TOKEN
   if (!token) {
@@ -38,7 +47,7 @@ export default async function handler(req: Request): Promise<Response> {
 
   if (req.method === 'GET') {
     try {
-      const { blobs } = await list({ prefix: BLOB_PATH })
+      const { blobs } = await withTimeout(list({ prefix: BLOB_PATH }), 6000, 'blob list')
       if (blobs.length === 0) {
         return json({ payload: null, updatedAt: null, updatedBy: null })
       }
@@ -46,7 +55,7 @@ export default async function handler(req: Request): Promise<Response> {
         (a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()
       )
       const latest = sorted[0]
-      const res = await fetch(latest.url, { cache: 'no-store' })
+      const res = await withTimeout(fetch(latest.url, { cache: 'no-store' }), 5000, 'blob fetch')
       if (!res.ok) return json({ error: `Falha ao buscar blob: ${res.status}` }, 502)
       const text = await res.text()
       let stored: { payload?: unknown; updatedAt?: string; updatedBy?: string } = {}
