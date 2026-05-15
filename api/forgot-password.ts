@@ -2,32 +2,43 @@
 //
 // POST /api/forgot-password  body: { email }
 //
-// Fluxo (100% Vercel + Git, sem SMTP):
-// 1. Lê o estado compartilhado do Blob (mesmo blob usado por /api/sync)
-// 2. Localiza o usuário em kb_users pelo e-mail (case-insensitive)
-// 3. Gera uma senha aleatória de 10 caracteres
-// 4. Atualiza o passwordHash no kb_users do blob (SHA-256 + base64,
-//    mesmo algoritmo do frontend em src/lib/storage.ts hashPassword)
-// 5. Retorna a nova senha na resposta JSON para o cliente exibir na tela
-//
-// Não envia e-mail por design — Vercel/GitHub não têm serviço SMTP nativo.
-// O usuário copia a senha exibida e usa imediatamente para entrar.
-//
-// Requer no Vercel:
-//   BLOB_READ_WRITE_TOKEN — auto-injetado se Vercel Blob estiver conectado
+// Roda em Node runtime — @vercel/blob não funciona em Edge runtime.
+// Handler Node legacy (req, res).
 
 import { put, list, del } from '@vercel/blob'
-
-export const config = { runtime: 'edge' }
 
 declare const process: { env: { [key: string]: string | undefined } }
 
 const BLOB_PATH = 'shared-state.json'
 
-function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
+type ReqLike = {
+  method?: string
+  on?: (event: 'data' | 'end' | 'error', cb: (chunk?: Buffer | Error) => void) => void
+  body?: unknown
+}
+type ResLike = {
+  setHeader: (k: string, v: string) => void
+  statusCode?: number
+  end: (data?: string) => void
+}
+
+function send(res: ResLike, status: number, body: unknown): void {
+  res.statusCode = status
+  res.setHeader('Content-Type', 'application/json')
+  res.end(JSON.stringify(body))
+}
+
+async function readJsonBody(req: ReqLike): Promise<unknown> {
+  if (req.body !== undefined) return req.body
+  return new Promise((resolve, reject) => {
+    if (!req.on) { resolve(undefined); return }
+    const chunks: Buffer[] = []
+    req.on('data', (c) => { if (c instanceof Buffer) chunks.push(c) })
+    req.on('end', () => {
+      const raw = Buffer.concat(chunks).toString('utf8')
+      try { resolve(raw ? JSON.parse(raw) : undefined) } catch (e) { reject(e) }
+    })
+    req.on('error', (e) => reject(e instanceof Error ? e : new Error(String(e))))
   })
 }
 
@@ -37,7 +48,6 @@ async function hashPassword(password: string): Promise<string> {
 }
 
 function generatePassword(): string {
-  // Evita caracteres ambíguos (0/O, 1/l/I)
   const chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789'
   let pw = ''
   const arr = new Uint32Array(10)
@@ -46,43 +56,42 @@ function generatePassword(): string {
   return pw
 }
 
-export default async function handler(req: Request): Promise<Response> {
-  if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
-  const token = process.env.BLOB_READ_WRITE_TOKEN
-  if (!token) return json({ error: 'Vercel Blob não configurado.' }, 503)
+export default async function handler(req: ReqLike, res: ResLike): Promise<void> {
+  if ((req.method || 'GET').toUpperCase() !== 'POST') {
+    return send(res, 405, { error: 'Method not allowed' })
+  }
+  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    return send(res, 503, { error: 'Vercel Blob não configurado.' })
+  }
 
-  let body: { email?: string }
-  try { body = await req.json() } catch { return json({ error: 'JSON inválido no body.' }, 400) }
-  const email = (body.email || '').trim().toLowerCase()
-  if (!email || !email.includes('@')) return json({ error: 'E-mail inválido.' }, 400)
+  let body: unknown
+  try { body = await readJsonBody(req) } catch { return send(res, 400, { error: 'JSON inválido no body.' }) }
+  const email = (((body as { email?: string })?.email) || '').trim().toLowerCase()
+  if (!email || !email.includes('@')) return send(res, 400, { error: 'E-mail inválido.' })
 
   let blobs
   try {
     const r = await list({ prefix: BLOB_PATH })
     blobs = r.blobs
   } catch (e) {
-    return json({ error: e instanceof Error ? e.message : 'Erro ao listar blobs.' }, 500)
+    return send(res, 500, { error: e instanceof Error ? e.message : 'Erro ao listar blobs.' })
   }
   if (blobs.length === 0) {
-    return json({ error: 'Servidor ainda não tem dados. Peça ao admin para fazer o primeiro sync.' }, 409)
+    return send(res, 409, { error: 'Servidor ainda não tem dados. Peça ao admin para fazer o primeiro sync.' })
   }
   const sorted = [...blobs].sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime())
   const latest = sorted[0]
   const blobRes = await fetch(latest.url, { cache: 'no-store' })
-  if (!blobRes.ok) return json({ error: `Falha ao baixar blob: ${blobRes.status}` }, 502)
+  if (!blobRes.ok) return send(res, 502, { error: `Falha ao baixar blob: ${blobRes.status}` })
   const stored: { payload?: { data?: Record<string, string> } } = await blobRes.json()
   const data = stored?.payload?.data
-  if (!data || !data.kb_users) return json({ error: 'Estado do servidor não tem usuários.' }, 409)
+  if (!data || !data.kb_users) return send(res, 409, { error: 'Estado do servidor não tem usuários.' })
 
   let users: Array<{ id: string; name?: string; email: string; passwordHash?: string }>
-  try { users = JSON.parse(data.kb_users) } catch { return json({ error: 'kb_users corrompido no servidor.' }, 500) }
+  try { users = JSON.parse(data.kb_users) } catch { return send(res, 500, { error: 'kb_users corrompido no servidor.' }) }
   const idx = users.findIndex((u) => (u.email || '').toLowerCase() === email)
   if (idx < 0) {
-    // Resposta genérica — não vaza quais e-mails estão cadastrados
-    return json({
-      ok: false,
-      message: 'Não encontramos esse e-mail. Verifique se está correto.',
-    })
+    return send(res, 200, { ok: false, message: 'Não encontramos esse e-mail. Verifique se está correto.' })
   }
 
   const newPassword = generatePassword()
@@ -105,12 +114,12 @@ export default async function handler(req: Request): Promise<Response> {
       const { blobs: all } = await list({ prefix: BLOB_PATH })
       const older = all.filter((b) => b.url !== newBlob.url)
       await Promise.all(older.map((b) => del(b.url).catch(() => null)))
-    } catch { /* ignore cleanup */ }
+    } catch { /* ignore */ }
   } catch (e) {
-    return json({ error: e instanceof Error ? e.message : 'Erro ao gravar blob.' }, 500)
+    return send(res, 500, { error: e instanceof Error ? e.message : 'Erro ao gravar blob.' })
   }
 
-  return json({
+  return send(res, 200, {
     ok: true,
     tempPassword: newPassword,
     name: users[idx].name || null,

@@ -3,89 +3,93 @@
 // GET  /api/sync   → retorna { payload, updatedAt, updatedBy } do blob compartilhado
 // POST /api/sync   → recebe { payload, updatedBy } e grava como versão atual
 //
-// Requer: Vercel Blob habilitado no projeto (Dashboard → Storage → Create Store
-// → Blob → Connect). O env var BLOB_READ_WRITE_TOKEN é injetado automaticamente.
+// Roda em Node runtime (default). Edge não é compatível com @vercel/blob
+// porque o SDK usa undici/fastify internamente. Por isso o handler é no
+// formato Node legacy (req, res) em vez de Request -> Response.
 //
-// Estratégia: cada POST cria um blob com sufixo aleatório (addRandomSuffix:true),
-// depois deleta os antigos. Assim evita depender da option `allowOverwrite` (que
-// só existe em versões mais novas do @vercel/blob). GET ordena por uploadedAt
-// e retorna o mais recente.
+// Requer: Vercel Blob habilitado (BLOB_READ_WRITE_TOKEN auto-injetado).
 
 import { put, list, del } from '@vercel/blob'
 
-// Roda em Edge runtime — Vercel só suporta handler Web Standard
-// (Request -> Response) em Edge functions. @vercel/blob 1.x suporta
-// Edge (a versão 0.27.x antiga tinha o problema de undici).
-export const config = { runtime: 'edge' }
-
-// Declaração mínima para o type-checker (process existe em runtime, mas
-// sem @types/node o TS não sabe).
 declare const process: { env: { [key: string]: string | undefined } }
 
 const BLOB_PATH = 'shared-state.json'
 
-function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
+type ReqLike = {
+  method?: string
+  on?: (event: 'data' | 'end' | 'error', cb: (chunk?: Buffer | Error) => void) => void
+  body?: unknown
+}
+type ResLike = {
+  setHeader: (k: string, v: string) => void
+  statusCode?: number
+  end: (data?: string) => void
+}
+
+function send(res: ResLike, status: number, body: unknown): void {
+  res.statusCode = status
+  res.setHeader('Content-Type', 'application/json')
+  res.end(JSON.stringify(body))
+}
+
+async function readJsonBody(req: ReqLike): Promise<unknown> {
+  // Vercel parses JSON bodies automatically when Content-Type is application/json
+  if (req.body !== undefined) return req.body
+  // Fallback: read stream manually
+  return new Promise((resolve, reject) => {
+    if (!req.on) { resolve(undefined); return }
+    const chunks: Buffer[] = []
+    req.on('data', (c) => { if (c instanceof Buffer) chunks.push(c) })
+    req.on('end', () => {
+      const raw = Buffer.concat(chunks).toString('utf8')
+      try { resolve(raw ? JSON.parse(raw) : undefined) } catch (e) { reject(e) }
+    })
+    req.on('error', (e) => reject(e instanceof Error ? e : new Error(String(e))))
   })
 }
 
-// Garante que uma Promise resolva em até `ms`. Se demorar mais, lança erro
-// claro em vez de deixar a função inteira estourar o timeout do Vercel.
-function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error(`Timeout ${label} após ${ms}ms`)), ms)
-    promise.then((v) => { clearTimeout(t); resolve(v) }, (e) => { clearTimeout(t); reject(e) })
-  })
-}
-
-export default async function handler(req: Request): Promise<Response> {
-  const token = process.env.BLOB_READ_WRITE_TOKEN
-  if (!token) {
-    return json({ error: 'Vercel Blob não configurado (BLOB_READ_WRITE_TOKEN ausente).' }, 503)
+export default async function handler(req: ReqLike, res: ResLike): Promise<void> {
+  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    return send(res, 503, { error: 'Vercel Blob não configurado (BLOB_READ_WRITE_TOKEN ausente).' })
   }
 
-  if (req.method === 'GET') {
+  const method = (req.method || 'GET').toUpperCase()
+
+  if (method === 'GET') {
     try {
-      const { blobs } = await withTimeout(list({ prefix: BLOB_PATH }), 6000, 'blob list')
+      const { blobs } = await list({ prefix: BLOB_PATH })
       if (blobs.length === 0) {
-        return json({ payload: null, updatedAt: null, updatedBy: null })
+        return send(res, 200, { payload: null, updatedAt: null, updatedBy: null })
       }
       const sorted = [...blobs].sort(
         (a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()
       )
       const latest = sorted[0]
-      const res = await withTimeout(fetch(latest.url, { cache: 'no-store' }), 5000, 'blob fetch')
-      if (!res.ok) return json({ error: `Falha ao buscar blob: ${res.status}` }, 502)
-      const text = await res.text()
+      const r = await fetch(latest.url, { cache: 'no-store' })
+      if (!r.ok) return send(res, 502, { error: `Falha ao buscar blob: ${r.status}` })
+      const text = await r.text()
       let stored: { payload?: unknown; updatedAt?: string; updatedBy?: string } = {}
-      try { stored = JSON.parse(text) } catch { return json({ error: 'Conteúdo do blob inválido.' }, 502) }
-      return json({
+      try { stored = JSON.parse(text) } catch { return send(res, 502, { error: 'Conteúdo do blob inválido.' }) }
+      return send(res, 200, {
         payload: stored.payload ?? null,
         updatedAt: stored.updatedAt ?? latest.uploadedAt,
         updatedBy: stored.updatedBy ?? null,
       })
     } catch (e) {
-      return json({ error: e instanceof Error ? e.message : 'Erro inesperado.' }, 500)
+      return send(res, 500, { error: e instanceof Error ? e.message : 'Erro inesperado.' })
     }
   }
 
-  if (req.method === 'POST') {
-    let body: { payload?: unknown; updatedBy?: string }
-    try {
-      body = await req.json()
-    } catch {
-      return json({ error: 'JSON inválido no body.' }, 400)
-    }
-    if (!body?.payload) {
-      return json({ error: 'Campo "payload" é obrigatório.' }, 400)
-    }
+  if (method === 'POST') {
+    let body: { payload?: unknown; updatedBy?: string } | unknown
+    try { body = await readJsonBody(req) } catch { return send(res, 400, { error: 'JSON inválido no body.' }) }
+    const b = body as { payload?: unknown; updatedBy?: string } | undefined
+    if (!b?.payload) return send(res, 400, { error: 'Campo "payload" é obrigatório.' })
     const updatedAt = new Date().toISOString()
     const wrapped = JSON.stringify({
-      payload: body.payload,
+      payload: b.payload,
       updatedAt,
-      updatedBy: body.updatedBy || 'unknown',
+      updatedBy: b.updatedBy || 'unknown',
     })
     try {
       const blob = await put(BLOB_PATH, wrapped, {
@@ -93,20 +97,16 @@ export default async function handler(req: Request): Promise<Response> {
         addRandomSuffix: true,
         contentType: 'application/json',
       })
-      // Limpeza: deleta blobs antigos do mesmo prefixo para não acumular
-      // (free tier do Vercel Blob é 1 GB; cada push gera ~5 MB).
       try {
         const { blobs: all } = await list({ prefix: BLOB_PATH })
-        const older = all.filter((b) => b.url !== blob.url)
-        await Promise.all(older.map((b) => del(b.url).catch(() => null)))
-      } catch {
-        /* falha de cleanup não impede o save */
-      }
-      return json({ ok: true, url: blob.url, updatedAt })
+        const older = all.filter((x) => x.url !== blob.url)
+        await Promise.all(older.map((x) => del(x.url).catch(() => null)))
+      } catch { /* cleanup pode falhar silenciosamente */ }
+      return send(res, 200, { ok: true, url: blob.url, updatedAt })
     } catch (e) {
-      return json({ error: e instanceof Error ? e.message : 'Erro ao gravar blob.' }, 500)
+      return send(res, 500, { error: e instanceof Error ? e.message : 'Erro ao gravar blob.' })
     }
   }
 
-  return json({ error: 'Method not allowed' }, 405)
+  return send(res, 405, { error: 'Method not allowed' })
 }

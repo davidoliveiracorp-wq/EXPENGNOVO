@@ -9,12 +9,6 @@
 // Body esperado (POST JSON):
 //   { to: string | string[], subject: string, text?: string, html?: string }
 
-// Roda em Edge runtime — Vercel só suporta handler Web Standard
-// (Request -> Response) em Edge functions.
-export const config = { runtime: 'edge' }
-
-// Declaração mínima para o type-checker (process existe em runtime, mas
-// sem @types/node o TS não sabe).
 declare const process: { env: { [key: string]: string | undefined } }
 
 interface SendPayload {
@@ -24,47 +18,58 @@ interface SendPayload {
   html?: string
 }
 
-function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
+type ReqLike = {
+  method?: string
+  on?: (event: 'data' | 'end' | 'error', cb: (chunk?: Buffer | Error) => void) => void
+  body?: unknown
+}
+type ResLike = {
+  setHeader: (k: string, v: string) => void
+  statusCode?: number
+  end: (data?: string) => void
+}
+
+function send(res: ResLike, status: number, body: unknown): void {
+  res.statusCode = status
+  res.setHeader('Content-Type', 'application/json')
+  res.end(JSON.stringify(body))
+}
+
+async function readJsonBody(req: ReqLike): Promise<unknown> {
+  if (req.body !== undefined) return req.body
+  return new Promise((resolve, reject) => {
+    if (!req.on) { resolve(undefined); return }
+    const chunks: Buffer[] = []
+    req.on('data', (c) => { if (c instanceof Buffer) chunks.push(c) })
+    req.on('end', () => {
+      const raw = Buffer.concat(chunks).toString('utf8')
+      try { resolve(raw ? JSON.parse(raw) : undefined) } catch (e) { reject(e) }
+    })
+    req.on('error', (e) => reject(e instanceof Error ? e : new Error(String(e))))
   })
 }
 
-export default async function handler(req: Request): Promise<Response> {
-  if (req.method !== 'POST') {
-    return json({ error: 'Method not allowed' }, 405)
+export default async function handler(req: ReqLike, res: ResLike): Promise<void> {
+  if ((req.method || 'GET').toUpperCase() !== 'POST') {
+    return send(res, 405, { error: 'Method not allowed' })
   }
-
   const apiKey = process.env.RESEND_API_KEY
   const fromEmail = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev'
-
-  if (!apiKey) {
-    return json({ error: 'RESEND_API_KEY não configurado no servidor.' }, 503)
-  }
+  if (!apiKey) return send(res, 503, { error: 'RESEND_API_KEY não configurado no servidor.' })
 
   let payload: SendPayload
-  try {
-    payload = (await req.json()) as SendPayload
-  } catch {
-    return json({ error: 'JSON inválido no body.' }, 400)
+  try { payload = (await readJsonBody(req)) as SendPayload } catch { return send(res, 400, { error: 'JSON inválido no body.' }) }
+  if (!payload?.to || !payload?.subject || (!payload?.text && !payload?.html)) {
+    return send(res, 400, { error: 'Campos obrigatórios: to, subject, text|html.' })
   }
-
-  if (!payload.to || !payload.subject || (!payload.text && !payload.html)) {
-    return json({ error: 'Campos obrigatórios: to, subject, text|html.' }, 400)
-  }
-
   const toList = Array.isArray(payload.to) ? payload.to : [payload.to]
   if (toList.length === 0 || toList.some((e) => !e || !e.includes('@'))) {
-    return json({ error: 'Campo "to" deve conter e-mails válidos.' }, 400)
+    return send(res, 400, { error: 'Campo "to" deve conter e-mails válidos.' })
   }
 
-  const resendRes = await fetch('https://api.resend.com/emails', {
+  const r = await fetch('https://api.resend.com/emails', {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       from: fromEmail,
       to: toList,
@@ -73,12 +78,10 @@ export default async function handler(req: Request): Promise<Response> {
       ...(payload.text ? { text: payload.text } : {}),
     }),
   })
-
-  if (!resendRes.ok) {
-    const details = await resendRes.text()
-    return json({ error: 'Resend falhou', status: resendRes.status, details }, 502)
+  if (!r.ok) {
+    const details = await r.text()
+    return send(res, 502, { error: 'Resend falhou', status: r.status, details })
   }
-
-  const data = await resendRes.json().catch(() => ({}))
-  return json({ ok: true, id: data?.id })
+  const data = await r.json().catch(() => ({}))
+  return send(res, 200, { ok: true, id: (data as { id?: string })?.id })
 }
