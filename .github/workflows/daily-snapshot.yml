@@ -25,7 +25,7 @@ jobs:
       - name: Baixar estado atual do servidor
         id: fetch
         env:
-          APP_URL: https://expengnovo-fro4.vercel.app
+          APP_URL: https://expengnovo.vercel.app
         run: |
           set -euo pipefail
           mkdir -p data
