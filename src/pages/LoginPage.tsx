@@ -58,11 +58,16 @@ export default function LoginPage() {
   const [showForgot, setShowForgot] = useState(false)
   const [forgotEmail, setForgotEmail] = useState('')
   const [forgotBusy, setForgotBusy] = useState(false)
-  const [forgotMsg, setForgotMsg] = useState<{ kind: 'ok' | 'err' | 'info'; text: string; tempPassword?: string } | null>(null)
+  const [forgotResult, setForgotResult] = useState<
+    | { kind: 'ok'; tempPassword: string; name: string | null; message: string }
+    | { kind: 'err'; text: string }
+    | null
+  >(null)
+  const [copied, setCopied] = useState(false)
 
   async function handleForgot(e: FormEvent) {
     e.preventDefault()
-    setForgotMsg(null)
+    setForgotResult(null)
     setForgotBusy(true)
     try {
       const res = await fetch('/api/forgot-password', {
@@ -72,25 +77,39 @@ export default function LoginPage() {
       })
       const data = await res.json().catch(() => ({} as Record<string, unknown>))
       if (!res.ok) {
-        const msg = (data as { error?: string }).error || `HTTP ${res.status}`
-        setForgotMsg({ kind: 'err', text: msg })
-      } else if ((data as { tempPassword?: string }).tempPassword) {
-        setForgotMsg({
-          kind: 'info',
-          text: (data as { message?: string }).message || 'Senha temporária gerada.',
-          tempPassword: (data as { tempPassword?: string }).tempPassword,
+        setForgotResult({ kind: 'err', text: (data as { error?: string }).error || `Falha (HTTP ${res.status}).` })
+        return
+      }
+      if ((data as { tempPassword?: string }).tempPassword) {
+        setForgotResult({
+          kind: 'ok',
+          tempPassword: (data as { tempPassword: string }).tempPassword,
+          name: ((data as { name?: string | null }).name) ?? null,
+          message: (data as { message?: string }).message || 'Nova senha gerada.',
         })
       } else {
-        setForgotMsg({
-          kind: 'ok',
-          text: (data as { message?: string }).message || 'Nova senha enviada para o e-mail cadastrado.',
-        })
+        setForgotResult({ kind: 'err', text: (data as { message?: string }).message || 'E-mail não encontrado.' })
       }
     } catch (err) {
-      setForgotMsg({ kind: 'err', text: err instanceof Error ? err.message : 'Erro de rede.' })
+      setForgotResult({ kind: 'err', text: err instanceof Error ? err.message : 'Erro de rede.' })
     } finally {
       setForgotBusy(false)
     }
+  }
+
+  async function handleCopyPassword(pw: string) {
+    try {
+      await navigator.clipboard.writeText(pw)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch { /* clipboard pode não estar disponível */ }
+  }
+
+  function useTempPasswordNow(pw: string) {
+    if (forgotEmail) setEmail(forgotEmail)
+    setPassword(pw)
+    setShowForgot(false)
+    setForgotResult(null)
   }
 
   const isDark = theme === 'dark'
@@ -183,47 +202,76 @@ export default function LoginPage() {
             </>
           ) : (
             <>
-              <form onSubmit={handleForgot} className="space-y-4">
-                <p className={`text-sm ${isDark ? 'text-white/70' : 'text-gray-600'}`}>
-                  Informe o e-mail cadastrado. Enviaremos uma nova senha para você.
-                </p>
-                <div>
-                  <label className={`block text-sm font-medium mb-1 ${isDark ? 'text-white/80' : 'text-gray-700'}`}>Email cadastrado</label>
-                  <input
-                    type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)}
-                    className={`w-full px-4 py-3 rounded-xl focus:outline-none focus:ring-2 transition-colors ${
-                      isDark ? 'bg-white/10 border border-white/20 text-white placeholder-white/40 focus:ring-white/40'
-                             : 'bg-gray-50 border border-gray-300 text-gray-900 placeholder-gray-400 focus:ring-purple-400'
-                    }`}
-                    placeholder="seu@email.com" required autoFocus
-                  />
-                </div>
-
-                {forgotMsg && (
-                  <div className={`p-3 rounded-lg text-sm ${
-                    forgotMsg.kind === 'ok' ? 'bg-green-500/20 border border-green-400/40 text-green-300'
-                    : forgotMsg.kind === 'err' ? 'bg-red-500/20 border border-red-400/40 text-red-400'
-                    : 'bg-blue-500/20 border border-blue-400/40 text-blue-300'
-                  }`}>
-                    <p>{forgotMsg.text}</p>
-                    {forgotMsg.tempPassword && (
-                      <p className="mt-2 font-mono text-base bg-black/30 px-2 py-1 rounded inline-block">
-                        {forgotMsg.tempPassword}
-                      </p>
-                    )}
+              {forgotResult?.kind === 'ok' ? (
+                <div className="space-y-4">
+                  <p className={`text-sm ${isDark ? 'text-white/70' : 'text-gray-600'}`}>
+                    {forgotResult.name ? `Olá, ${forgotResult.name}!` : 'Pronto!'} Sua nova senha temporária é:
+                  </p>
+                  <div className={`rounded-xl p-4 text-center ${isDark ? 'bg-black/40 border border-white/20' : 'bg-gray-100 border border-gray-300'}`}>
+                    <p className={`font-mono text-xl tracking-wider select-all ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                      {forgotResult.tempPassword}
+                    </p>
                   </div>
-                )}
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleCopyPassword(forgotResult.tempPassword)}
+                      className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
+                        isDark ? 'bg-white/10 hover:bg-white/20 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-800'
+                      }`}
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
+                      {copied ? 'Copiado!' : 'Copiar'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => useTempPasswordNow(forgotResult.tempPassword)}
+                      className="flex-1 py-2.5 rounded-xl bg-black hover:bg-gray-800 text-white text-sm font-semibold transition-colors"
+                    >
+                      Usar e entrar
+                    </button>
+                  </div>
+                  <p className={`text-xs ${isDark ? 'text-white/50' : 'text-gray-500'}`}>
+                    Salve essa senha em local seguro. Você pode trocá-la depois pelo seu próprio dispositivo de confiança.
+                  </p>
+                </div>
+              ) : (
+                <form onSubmit={handleForgot} className="space-y-4">
+                  <p className={`text-sm ${isDark ? 'text-white/70' : 'text-gray-600'}`}>
+                    Informe o e-mail cadastrado. Vamos gerar uma nova senha aqui mesmo na tela —
+                    copie e use para entrar.
+                  </p>
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${isDark ? 'text-white/80' : 'text-gray-700'}`}>Email cadastrado</label>
+                    <input
+                      type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)}
+                      className={`w-full px-4 py-3 rounded-xl focus:outline-none focus:ring-2 transition-colors ${
+                        isDark ? 'bg-white/10 border border-white/20 text-white placeholder-white/40 focus:ring-white/40'
+                               : 'bg-gray-50 border border-gray-300 text-gray-900 placeholder-gray-400 focus:ring-purple-400'
+                      }`}
+                      placeholder="seu@email.com" required autoFocus
+                    />
+                  </div>
 
-                <button type="submit" disabled={forgotBusy}
-                  className="w-full py-3 bg-black text-white font-semibold rounded-xl hover:bg-gray-800 transition-colors disabled:opacity-60">
-                  {forgotBusy ? 'Enviando…' : 'Enviar nova senha'}
-                </button>
-              </form>
+                  {forgotResult?.kind === 'err' && (
+                    <div className="p-3 rounded-lg text-sm bg-red-500/20 border border-red-400/40 text-red-400">
+                      {forgotResult.text}
+                    </div>
+                  )}
+
+                  <button type="submit" disabled={forgotBusy}
+                    className="w-full py-3 bg-black text-white font-semibold rounded-xl hover:bg-gray-800 transition-colors disabled:opacity-60">
+                    {forgotBusy ? 'Gerando…' : 'Gerar nova senha'}
+                  </button>
+                </form>
+              )}
 
               <p className={`text-center text-sm mt-6 ${isDark ? 'text-white/60' : 'text-gray-500'}`}>
                 <button
                   type="button"
-                  onClick={() => { setShowForgot(false); setForgotMsg(null); setForgotEmail('') }}
+                  onClick={() => { setShowForgot(false); setForgotResult(null); setForgotEmail('') }}
                   className={`font-medium hover:underline ${isDark ? 'text-white' : 'text-purple-700'}`}
                 >
                   ← Voltar ao login
