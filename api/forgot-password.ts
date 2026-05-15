@@ -56,7 +56,7 @@ export default async function handler(req: Request): Promise<Response> {
 
   let blobs
   try {
-    const r = await list({ prefix: BLOB_PATH, token })
+    const r = await list({ prefix: BLOB_PATH })
     blobs = r.blobs
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : 'Erro ao listar blobs.' }, 500)
@@ -98,12 +98,11 @@ export default async function handler(req: Request): Promise<Response> {
       access: 'public',
       addRandomSuffix: true,
       contentType: 'application/json',
-      token,
     })
     try {
-      const { blobs: all } = await list({ prefix: BLOB_PATH, token })
+      const { blobs: all } = await list({ prefix: BLOB_PATH })
       const older = all.filter((b) => b.url !== newBlob.url)
-      await Promise.all(older.map((b) => del(b.url, { token }).catch(() => null)))
+      await Promise.all(older.map((b) => del(b.url).catch(() => null)))
     } catch { /* ignore cleanup */ }
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : 'Erro ao gravar blob.' }, 500)

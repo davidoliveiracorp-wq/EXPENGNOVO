@@ -38,7 +38,7 @@ export default async function handler(req: Request): Promise<Response> {
 
   if (req.method === 'GET') {
     try {
-      const { blobs } = await list({ prefix: BLOB_PATH, token })
+      const { blobs } = await list({ prefix: BLOB_PATH })
       if (blobs.length === 0) {
         return json({ payload: null, updatedAt: null, updatedBy: null })
       }
@@ -82,14 +82,13 @@ export default async function handler(req: Request): Promise<Response> {
         access: 'public',
         addRandomSuffix: true,
         contentType: 'application/json',
-        token,
       })
       // Limpeza: deleta blobs antigos do mesmo prefixo para não acumular
       // (free tier do Vercel Blob é 1 GB; cada push gera ~5 MB).
       try {
-        const { blobs: all } = await list({ prefix: BLOB_PATH, token })
+        const { blobs: all } = await list({ prefix: BLOB_PATH })
         const older = all.filter((b) => b.url !== blob.url)
-        await Promise.all(older.map((b) => del(b.url, { token }).catch(() => null)))
+        await Promise.all(older.map((b) => del(b.url).catch(() => null)))
       } catch {
         /* falha de cleanup não impede o save */
       }
