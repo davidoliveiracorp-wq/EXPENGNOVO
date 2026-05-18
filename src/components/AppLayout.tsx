@@ -98,7 +98,20 @@ export default function AppLayout() {
       const res = await fetch('/api/sync', { method: 'GET', cache: 'no-store' })
       if (!res.ok) { setSyncStatus('offline'); return }
       const data = await res.json()
-      if (!data?.payload || !data?.updatedAt) { setSyncStatus('idle'); return }
+      if (!data?.payload || !data?.updatedAt) {
+        // Servidor vazio. Se este navegador tem dados locais, dispara o
+        // primeiro sync automaticamente — recupera de falhas silenciosas
+        // do auto-push inicial pós-deploy.
+        let hasLocalData = false
+        try {
+          hasLocalData =
+            JSON.parse(localStorage.getItem('kb_boards') || '[]').length > 0 ||
+            JSON.parse(localStorage.getItem('kb_songs') || '[]').length > 0
+        } catch { /* ignore */ }
+        if (hasLocalData) { pushNow(true) }
+        else setSyncStatus('idle')
+        return
+      }
       const lastPulled = localStorage.getItem(LAST_PULLED_KEY)
       const isNewer = !lastPulled || new Date(data.updatedAt).getTime() > new Date(lastPulled).getTime()
       if (!isNewer) { setSyncStatus('idle'); return }
@@ -131,7 +144,7 @@ export default function AppLayout() {
     } catch {
       setSyncStatus('offline')
     }
-  }, [])
+  }, [pushNow])
 
   // Listener: dispara push debounced sempre que storage avisa de mudança local
   useEffect(() => {
@@ -139,42 +152,6 @@ export default function AppLayout() {
     window.addEventListener('kb-storage-change', onChange)
     return () => window.removeEventListener('kb-storage-change', onChange)
   }, [schedulePush])
-
-  // Primeiro launch pós-deploy: se o usuário tem dados locais mas ainda não
-  // tem controle de versão (kb_local_version), envia para o servidor se ele
-  // estiver vazio. Garante que mudanças pré-deploy de qualquer usuário
-  // (mesmo não-admin) cheguem aos demais sem precisar de ação manual.
-  useEffect(() => {
-    if (loading) return
-    const hasVersion = localStorage.getItem(LOCAL_VERSION_KEY) !== null
-    if (hasVersion) return
-    let hasData = false
-    try {
-      hasData =
-        JSON.parse(localStorage.getItem('kb_boards') || '[]').length > 0 ||
-        JSON.parse(localStorage.getItem('kb_songs') || '[]').length > 0
-    } catch { /* ignore */ }
-    if (!hasData) {
-      // Sem dados, só marca inicializado para não disparar isso de novo
-      localStorage.setItem(LOCAL_VERSION_KEY, '0')
-      localStorage.setItem(LAST_PUSHED_VERSION_KEY, '0')
-      return
-    }
-    // Checa se o servidor já tem dados antes de auto-pushar
-    fetch('/api/sync', { method: 'GET', cache: 'no-store' })
-      .then((res) => res.ok ? res.json() : null)
-      .then((data) => {
-        if (data?.payload) {
-          // Servidor já tem dados — não sobrescreve; deixa o auto-pull aplicar
-          localStorage.setItem(LOCAL_VERSION_KEY, '0')
-          localStorage.setItem(LAST_PUSHED_VERSION_KEY, '0')
-          return
-        }
-        // Servidor vazio → envia o estado local automaticamente
-        forcePush()
-      })
-      .catch(() => { /* Blob não configurado, silencioso */ })
-  }, [loading, forcePush])
 
   // Pull no boot e a cada POLL_INTERVAL_MS quando a aba está visível.
   // Também faz pull ao focar a aba (volta de outra janela / outra aba).

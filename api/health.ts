@@ -1,15 +1,31 @@
-// Endpoint de diagnóstico — Node serverless function classic (req, res).
-// Sem @vercel/blob, sem export const config. Deve retornar instantaneamente.
+// Endpoint de diagnóstico — confirma que a function roda e que o banco
+// Neon Postgres está acessível.
+
+import { pingDb } from './_lib/db'
 
 declare const process: { env: { [key: string]: string | undefined } }
 
-export default function handler(_req: unknown, res: { setHeader: (k: string, v: string) => void; statusCode?: number; end: (data: string) => void }): void {
+type ResLike = { setHeader: (k: string, v: string) => void; statusCode?: number; end: (data: string) => void }
+
+export default async function handler(_req: unknown, res: ResLike): Promise<void> {
   res.setHeader('Content-Type', 'application/json')
+  const databaseUrlSet = !!process.env.DATABASE_URL
+  if (!databaseUrlSet) {
+    res.statusCode = 200
+    res.end(JSON.stringify({
+      ok: false,
+      ts: new Date().toISOString(),
+      databaseUrlSet: false,
+      db: { ok: false, error: 'DATABASE_URL não configurado.' },
+    }))
+    return
+  }
+  const db = await pingDb()
   res.statusCode = 200
   res.end(JSON.stringify({
-    ok: true,
+    ok: db.ok,
     ts: new Date().toISOString(),
-    blobTokenSet: !!process.env.BLOB_READ_WRITE_TOKEN,
-    blobTokenPrefix: process.env.BLOB_READ_WRITE_TOKEN?.slice(0, 24) || null,
+    databaseUrlSet: true,
+    db,
   }))
 }
