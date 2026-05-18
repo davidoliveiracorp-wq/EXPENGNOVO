@@ -10,7 +10,7 @@
 //
 // Requer: DATABASE_URL no ambiente (injetada pela integração Neon-Vercel).
 
-import { getSharedState, setSharedState } from './_lib/db'
+import { getSharedState, setSharedState } from './_lib/db.js'
 
 declare const process: { env: { [key: string]: string | undefined } }
 

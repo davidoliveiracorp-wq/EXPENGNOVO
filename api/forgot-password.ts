@@ -7,7 +7,7 @@
 // e regrava. A nova senha é retornada no response para exibição na tela
 // (sem dependência de SMTP).
 
-import { getSharedState, setSharedState } from './_lib/db'
+import { getSharedState, setSharedState } from './_lib/db.js'
 
 declare const process: { env: { [key: string]: string | undefined } }
 

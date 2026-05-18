@@ -1,7 +1,7 @@
 // Endpoint de diagnóstico — confirma que a function roda e que o banco
 // Neon Postgres está acessível.
 
-import { pingDb } from './_lib/db'
+import { pingDb } from './_lib/db.js'
 
 declare const process: { env: { [key: string]: string | undefined } }
 
