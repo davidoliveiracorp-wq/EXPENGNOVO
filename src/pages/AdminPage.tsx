@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
 import { useNavigate } from 'react-router-dom'
 import {
-  getUsers, setUserRole, adminDeleteUser,
+  getUsers, setUserRole, adminDeleteUser, adminResetUserPassword,
   getInvites, createInvite, deleteInvite,
   ADMIN_EMAILS,
   exportBackup, importBackup,
@@ -58,6 +58,35 @@ export default function AdminPage() {
     if (!confirm(`Excluir o usuário "${u.name}"? Esta ação não pode ser desfeita.`)) return
     adminDeleteUser(u.id)
     setUsers((prev) => prev.filter((x) => x.id !== u.id))
+  }
+
+  // Modal exibido após reset bem-sucedido (mostra senha em texto plano).
+  const [resetResult, setResetResult] = useState<{ user: User; password: string } | null>(null)
+  const [resetCopied, setResetCopied] = useState(false)
+  const [resetBusy, setResetBusy] = useState<string | null>(null)
+
+  async function handleResetPassword(u: User) {
+    if (resetBusy) return
+    if (!confirm(`Gerar uma nova senha para "${u.name}"? A senha atual será invalidada e você precisará repassar a nova para o usuário.`)) return
+    setResetBusy(u.id)
+    try {
+      const newPassword = await adminResetUserPassword(u.id)
+      setResetResult({ user: u, password: newPassword })
+      setResetCopied(false)
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Erro ao resetar senha.')
+    } finally {
+      setResetBusy(null)
+    }
+  }
+
+  async function copyResetPassword() {
+    if (!resetResult) return
+    try {
+      await navigator.clipboard.writeText(resetResult.password)
+      setResetCopied(true)
+      window.setTimeout(() => setResetCopied(false), 2000)
+    } catch { /* ignore */ }
   }
 
   function buildInviteLink(email: string, name: string) {
@@ -347,6 +376,17 @@ export default function AdminPage() {
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                           d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => handleResetPassword(u)}
+                      disabled={resetBusy === u.id}
+                      title="Resetar senha (gera uma nova senha aleatória)"
+                      className={`p-1.5 rounded-lg transition-colors ${muted} hover:text-amber-400 hover:bg-amber-500/10 disabled:opacity-40 disabled:cursor-wait`}
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                          d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
                       </svg>
                     </button>
                     <button
@@ -690,6 +730,57 @@ export default function AdminPage() {
               {backupMsg.text}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Modal: nova senha gerada pelo admin */}
+      {resetResult && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          onClick={() => setResetResult(null)}
+        >
+          <div
+            className={`max-w-md w-full rounded-2xl border p-6 shadow-2xl ${
+              isDark ? 'bg-gray-900 border-white/15' : 'bg-white border-gray-200'
+            }`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className={`font-semibold text-lg mb-1 ${heading}`}>Nova senha gerada</h2>
+            <p className={`text-sm mb-4 ${muted}`}>
+              Senha temporária para <span className="font-medium">{resetResult.user.name}</span>{' '}
+              (<span className="font-mono text-xs">{resetResult.user.email}</span>). Copie e envie ao usuário por um canal seguro.
+            </p>
+            <div className={`flex items-center gap-2 p-3 rounded-xl border mb-4 ${
+              isDark ? 'bg-gray-800 border-white/10' : 'bg-gray-50 border-gray-200'
+            }`}>
+              <code className={`flex-1 font-mono text-sm break-all ${heading}`}>{resetResult.password}</code>
+              <button
+                onClick={copyResetPassword}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex-shrink-0 ${
+                  resetCopied
+                    ? 'bg-green-500/20 text-green-400'
+                    : isDark
+                      ? 'bg-white/10 text-white hover:bg-white/15'
+                      : 'bg-gray-900 text-white hover:bg-gray-700'
+                }`}
+              >
+                {resetCopied ? 'Copiado!' : 'Copiar'}
+              </button>
+            </div>
+            <p className={`text-xs mb-4 ${muted}`}>
+              Esta senha não será exibida novamente. O usuário poderá trocá-la depois pelo perfil.
+            </p>
+            <div className="flex justify-end">
+              <button
+                onClick={() => setResetResult(null)}
+                className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
+                  isDark ? 'bg-white/10 text-white hover:bg-white/15' : 'bg-gray-100 text-gray-900 hover:bg-gray-200'
+                }`}
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
