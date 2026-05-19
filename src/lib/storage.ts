@@ -543,6 +543,24 @@ export function adminDeleteUser(userId: string): void {
   set('kb_users', get<StoredUser>('kb_users').filter((u) => u.id !== userId))
 }
 
+// Admin reseta a senha de outro usuário gerando uma nova senha aleatória.
+// Retorna a senha em texto plano para o admin exibir/copiar e repassar ao
+// usuário. Auto-sync propaga o novo hash para todos os dispositivos.
+export async function adminResetUserPassword(userId: string): Promise<string> {
+  const users = get<StoredUser>('kb_users')
+  const idx = users.findIndex((u) => u.id === userId)
+  if (idx < 0) throw new Error('Usuário não encontrado.')
+  const chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789'
+  const arr = new Uint32Array(10)
+  crypto.getRandomValues(arr)
+  let newPassword = ''
+  for (let i = 0; i < arr.length; i++) newPassword += chars[arr[i] % chars.length]
+  const newHash = await hashPassword(newPassword)
+  users[idx] = { ...users[idx], passwordHash: newHash }
+  set('kb_users', users)
+  return newPassword
+}
+
 // ── Birthdays (registros standalone — não-usuários) ──────────────────────────
 
 export function getBirthdays(): Birthday[] { return get<Birthday>('kb_birthdays') }
