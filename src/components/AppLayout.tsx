@@ -138,6 +138,11 @@ export default function AppLayout() {
         _setBootstrapInProgress(false)
       }
       localStorage.setItem(LAST_PULLED_KEY, data.updatedAt)
+      // Após aplicar o servidor, o estado local é IGUAL ao do servidor —
+      // alinha lastPushed com localVer pra que o pushNow automático no
+      // próximo tick não dispare e sobrescreva o estado puxado.
+      const versionAfterPull = Number(localStorage.getItem(LOCAL_VERSION_KEY) || '0')
+      localStorage.setItem(LAST_PUSHED_VERSION_KEY, String(versionAfterPull))
       setLastSyncAt(data.updatedAt)
       setSyncStatus('idle')
       // Recarrega para refletir as mudanças (a UI lê do localStorage)
@@ -198,6 +203,10 @@ export default function AppLayout() {
         _setBootstrapInProgress(false)
       }
       localStorage.setItem(LAST_PULLED_KEY, serverUpdate.updatedAt)
+      // Alinha lastPushed com localVer: o estado local agora é o do
+      // servidor; sem isso, o pushNow automático sobrescreveria no boot.
+      const versionAfterApply = Number(localStorage.getItem(LOCAL_VERSION_KEY) || '0')
+      localStorage.setItem(LAST_PUSHED_VERSION_KEY, String(versionAfterApply))
       window.location.reload()
     } catch (e) {
       console.error('Falha ao aplicar atualização do servidor', e)

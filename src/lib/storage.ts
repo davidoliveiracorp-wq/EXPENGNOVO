@@ -842,10 +842,18 @@ export async function ensureSeedLoaded(): Promise<{ loaded: boolean; reason?: st
       if (!k.startsWith('kb_') || typeof v !== 'string') continue
       if (k === 'kb_users' || k === 'kb_boards' || k === 'kb_songs' || k === 'kb_invites') continue
       if (k === 'kb_session') continue // sessão é por navegador, nunca importar
+      if (k === 'kb_local_version' || k === 'kb_last_pushed_version') continue // sync versions só nesse navegador
       if (localStorage.getItem(k) !== null) continue
       try { JSON.parse(v) } catch { continue }
       localStorage.setItem(k, v)
     }
+
+    // Alinha lastPushed com localVer após o seed: navegador acabou de
+    // receber dados, não tem mudanças pendentes a enviar. Sem isso, o
+    // pushNow automático do AppLayout dispararia no boot e sobrescreveria
+    // o estado atual do servidor com o seed antigo.
+    const localVer = Number(localStorage.getItem('kb_local_version') || '0')
+    localStorage.setItem('kb_last_pushed_version', String(localVer))
 
     return { loaded: true }
   } catch (e) {
