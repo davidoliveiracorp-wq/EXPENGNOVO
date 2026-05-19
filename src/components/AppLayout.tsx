@@ -2,7 +2,7 @@ import { useRef, useState, useEffect, useCallback } from 'react'
 import { Outlet, NavLink } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
-import { exportBackup, importBackup, changeMyPassword, _setBootstrapInProgress } from '../lib/storage'
+import { exportBackup, exportBackupForSync, importBackup, changeMyPassword, _setBootstrapInProgress } from '../lib/storage'
 import Logo from './Logo'
 
 const LAST_PULLED_KEY = 'kb_last_pulled_at'
@@ -61,7 +61,10 @@ export default function AppLayout() {
     if (!force && localVer <= lastPushed) return
     setSyncStatus('pushing')
     try {
-      const payload = exportBackup()
+      // Usa versão "lite" sem o `data` dos attachments para caber no
+      // limite de 4.5MB de body do Vercel serverless. Attachments seguem
+      // armazenados localmente, só não propagam entre usuários.
+      const payload = exportBackupForSync()
       const u = userRef.current
       const res = await fetch('/api/sync', {
         method: 'POST',
@@ -125,10 +128,12 @@ export default function AppLayout() {
         setSyncStatus('conflict')
         return
       }
-      // Aplica silenciosamente (sem reload se nada estiver em edição)
+      // Aplica silenciosamente (sem reload se nada estiver em edição).
+      // preserveLocalAttachments: o payload de sync vem sem `data` nos
+      // attachments — preservamos os arquivos locais por id de card.
       _setBootstrapInProgress(true)
       try {
-        importBackup(data.payload, 'merge')
+        importBackup(data.payload, 'merge', { preserveLocalAttachments: true })
       } finally {
         _setBootstrapInProgress(false)
       }
@@ -188,7 +193,7 @@ export default function AppLayout() {
     try {
       _setBootstrapInProgress(true)
       try {
-        importBackup(serverUpdate.payload, 'merge')
+        importBackup(serverUpdate.payload, 'merge', { preserveLocalAttachments: true })
       } finally {
         _setBootstrapInProgress(false)
       }

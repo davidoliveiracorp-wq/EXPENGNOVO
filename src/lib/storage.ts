@@ -661,7 +661,49 @@ export function exportBackup(): BackupPayload {
   }
 }
 
-export function importBackup(payload: unknown, mode: 'merge' | 'replace' = 'merge'): { restored: number; keys: string[] } {
+// Backup "lite" usado pelo auto-sync. Anexos (PDFs/imagens em base64)
+// frequentemente passam de 4.5MB no agregado e causam 413 FUNCTION_PAYLOAD_TOO_LARGE
+// na Vercel. Aqui removemos o campo `data` dos attachments antes de
+// serializar — apenas metadados (id, filename, isImage) seguem.
+// Anexos seguem armazenados localmente; só não são propagados entre
+// usuários via sync.
+export function exportBackupForSync(): BackupPayload {
+  const data: Record<string, string> = {}
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i)
+    if (!key || !key.startsWith('kb_')) continue
+    const value = localStorage.getItem(key)
+    if (value === null) continue
+    if (key === 'kb_boards') {
+      try {
+        const boards = JSON.parse(value) as Board[]
+        const stripped = boards.map((b) => ({
+          ...b,
+          columns: b.columns.map((c) => ({
+            ...c,
+            cards: c.cards.map((card) => ({
+              ...card,
+              attachments: (card.attachments || []).map((a) => ({ ...a, data: '' })),
+            })),
+          })),
+        }))
+        data[key] = JSON.stringify(stripped)
+      } catch {
+        data[key] = value
+      }
+      continue
+    }
+    data[key] = value
+  }
+  return {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    origin: typeof window !== 'undefined' ? window.location.origin : '',
+    data,
+  }
+}
+
+export function importBackup(payload: unknown, mode: 'merge' | 'replace' = 'merge', options: { preserveLocalAttachments?: boolean } = {}): { restored: number; keys: string[] } {
   if (!payload || typeof payload !== 'object') throw new Error('Backup inválido: payload não é um objeto')
   const p = payload as Partial<BackupPayload>
   if (p.version !== 1) throw new Error(`Backup inválido: versão ${p.version} não suportada`)
@@ -675,6 +717,49 @@ export function importBackup(payload: unknown, mode: 'merge' | 'replace' = 'merg
     try { JSON.parse(v as string) } catch { throw new Error(`Backup inválido: chave "${k}" não é JSON válido`) }
   }
 
+  // Preservar attachments locais ao importar de sync: o payload de sync
+  // sempre vem sem `data` nos attachments (lite). Antes de gravar, mescla
+  // os attachments locais existentes pelo id do card.
+  const finalEntries = entries.map(([k, v]) => {
+    if (!options.preserveLocalAttachments || k !== 'kb_boards') return [k, v] as const
+    try {
+      const localRaw = localStorage.getItem('kb_boards')
+      if (!localRaw) return [k, v] as const
+      const localBoards = JSON.parse(localRaw) as Board[]
+      const localAttachmentsByCard = new Map<string, Attachment[]>()
+      for (const b of localBoards) {
+        for (const c of b.columns) {
+          for (const card of c.cards) {
+            if (card.attachments?.length) localAttachmentsByCard.set(card.id, card.attachments)
+          }
+        }
+      }
+      if (localAttachmentsByCard.size === 0) return [k, v] as const
+      const incoming = JSON.parse(v as string) as Board[]
+      const merged = incoming.map((b) => ({
+        ...b,
+        columns: b.columns.map((c) => ({
+          ...c,
+          cards: c.cards.map((card) => {
+            const localAtt = localAttachmentsByCard.get(card.id)
+            if (!localAtt?.length) return card
+            // Para cada attachment incoming sem data, se temos versão local com data, usar local.
+            const localById = new Map(localAtt.map((a) => [a.id, a]))
+            const mergedAttachments = (card.attachments || []).map((a) => {
+              if (a.data) return a
+              const local = localById.get(a.id)
+              return local?.data ? local : a
+            })
+            return { ...card, attachments: mergedAttachments }
+          }),
+        })),
+      }))
+      return [k, JSON.stringify(merged)] as const
+    } catch {
+      return [k, v] as const
+    }
+  })
+
   if (mode === 'replace') {
     const toRemove: string[] = []
     for (let i = 0; i < localStorage.length; i++) {
@@ -684,8 +769,8 @@ export function importBackup(payload: unknown, mode: 'merge' | 'replace' = 'merg
     toRemove.forEach((k) => localStorage.removeItem(k))
   }
 
-  for (const [k, v] of entries) localStorage.setItem(k, v as string)
-  return { restored: entries.length, keys: entries.map(([k]) => k) }
+  for (const [k, v] of finalEntries) localStorage.setItem(k, v as string)
+  return { restored: finalEntries.length, keys: finalEntries.map(([k]) => k) }
 }
 
 // ── Seed bootstrap (carrega /seed.json em navegadores zerados) ────────────────
