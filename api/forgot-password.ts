@@ -2,14 +2,14 @@
 //
 // POST /api/forgot-password  body: { email }
 //
-// Roda em Node runtime — @vercel/blob não funciona em Edge runtime.
-// Handler Node legacy (req, res).
+// Lê kb_users da linha compartilhada em shared_state (Neon Postgres),
+// gera uma nova senha aleatória, atualiza o hash do usuário no payload
+// e regrava. A nova senha é retornada no response para exibição na tela
+// (sem dependência de SMTP).
 
-import { put, list, del } from '@vercel/blob'
+import { getSharedState, setSharedState } from './_lib/db.js'
 
 declare const process: { env: { [key: string]: string | undefined } }
-
-const BLOB_PATH = 'shared-state.json'
 
 type ReqLike = {
   method?: string
@@ -60,8 +60,8 @@ export default async function handler(req: ReqLike, res: ResLike): Promise<void>
   if ((req.method || 'GET').toUpperCase() !== 'POST') {
     return send(res, 405, { error: 'Method not allowed' })
   }
-  if (!process.env.BLOB_READ_WRITE_TOKEN) {
-    return send(res, 503, { error: 'Vercel Blob não configurado.' })
+  if (!process.env.DATABASE_URL) {
+    return send(res, 503, { error: 'Banco de dados não configurado (DATABASE_URL ausente).' })
   }
 
   let body: unknown
@@ -69,22 +69,18 @@ export default async function handler(req: ReqLike, res: ResLike): Promise<void>
   const email = (((body as { email?: string })?.email) || '').trim().toLowerCase()
   if (!email || !email.includes('@')) return send(res, 400, { error: 'E-mail inválido.' })
 
-  let blobs
+  let state
   try {
-    const r = await list({ prefix: BLOB_PATH })
-    blobs = r.blobs
+    state = await getSharedState()
   } catch (e) {
-    return send(res, 500, { error: e instanceof Error ? e.message : 'Erro ao listar blobs.' })
+    return send(res, 500, { error: e instanceof Error ? e.message : 'Erro ao consultar banco.' })
   }
-  if (blobs.length === 0) {
+  if (!state) {
     return send(res, 409, { error: 'Servidor ainda não tem dados. Peça ao admin para fazer o primeiro sync.' })
   }
-  const sorted = [...blobs].sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime())
-  const latest = sorted[0]
-  const blobRes = await fetch(latest.url, { cache: 'no-store' })
-  if (!blobRes.ok) return send(res, 502, { error: `Falha ao baixar blob: ${blobRes.status}` })
-  const stored: { payload?: { data?: Record<string, string> } } = await blobRes.json()
-  const data = stored?.payload?.data
+
+  const stored = state.payload as { data?: Record<string, string> } | null
+  const data = stored?.data
   if (!data || !data.kb_users) return send(res, 409, { error: 'Estado do servidor não tem usuários.' })
 
   let users: Array<{ id: string; name?: string; email: string; passwordHash?: string }>
@@ -99,24 +95,13 @@ export default async function handler(req: ReqLike, res: ResLike): Promise<void>
   users[idx] = { ...users[idx], passwordHash: newHash }
   data.kb_users = JSON.stringify(users)
 
-  const wrapped = JSON.stringify({
-    payload: { ...stored.payload, data },
-    updatedAt: new Date().toISOString(),
-    updatedBy: `${users[idx].name || email} (esqueci-a-senha)`,
-  })
   try {
-    const newBlob = await put(BLOB_PATH, wrapped, {
-      access: 'public',
-      addRandomSuffix: true,
-      contentType: 'application/json',
-    })
-    try {
-      const { blobs: all } = await list({ prefix: BLOB_PATH })
-      const older = all.filter((b) => b.url !== newBlob.url)
-      await Promise.all(older.map((b) => del(b.url).catch(() => null)))
-    } catch { /* ignore */ }
+    await setSharedState(
+      { ...stored, data },
+      `${users[idx].name || email} (esqueci-a-senha)`,
+    )
   } catch (e) {
-    return send(res, 500, { error: e instanceof Error ? e.message : 'Erro ao gravar blob.' })
+    return send(res, 500, { error: e instanceof Error ? e.message : 'Erro ao gravar no banco.' })
   }
 
   return send(res, 200, {
