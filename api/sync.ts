@@ -16,6 +16,7 @@ declare const process: { env: { [key: string]: string | undefined } }
 
 type ReqLike = {
   method?: string
+  headers?: Record<string, string | string[] | undefined>
   on?: (event: 'data' | 'end' | 'error', cb: (chunk?: Buffer | Error) => void) => void
   body?: unknown
 }
@@ -69,6 +70,21 @@ export default async function handler(req: ReqLike, res: ResLike): Promise<void>
   }
 
   if (method === 'POST') {
+    // Lock temporário: quando SYNC_PAUSED=true, só aceita POST com
+    // header X-Sync-Force igual ao SYNC_FORCE_TOKEN. Usado em incidentes
+    // de sobrescrita acidental — bloqueia auto-push dos clientes
+    // enquanto o admin restaura o estado correto e os usuários reabrem
+    // os navegadores.
+    if (process.env.SYNC_PAUSED === 'true') {
+      const headerToken = req.headers?.['x-sync-force']
+      const provided = Array.isArray(headerToken) ? headerToken[0] : headerToken
+      if (!process.env.SYNC_FORCE_TOKEN || provided !== process.env.SYNC_FORCE_TOKEN) {
+        return send(res, 423, {
+          error: 'Sync temporariamente pausado pelo admin. Aguarde alguns minutos e recarregue (F5) — seu trabalho não será perdido.',
+        })
+      }
+    }
+
     let body: unknown
     try { body = await readJsonBody(req) } catch { return send(res, 400, { error: 'JSON inválido no body.' }) }
     const b = body as { payload?: unknown; updatedBy?: string } | undefined
